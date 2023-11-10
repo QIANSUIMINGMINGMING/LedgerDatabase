@@ -1,16 +1,16 @@
 #===== Parameters to Fill =====
 
 # project root directory
-rootdir=/users/yc/LedgerDatabase
+rootdir=/home/muxi/ccpro/LedgerDatabase
 
 # log directory
-logdir="/data/yc/logs"
+logdir="/home/muxi/logs"
 
 # master node ip address
-master=10.10.10.206
+master=127.0.0.1
 
 # init file directory
-initfile=/data/yc/ustore/tpcc/tpcc
+# initfile=/data/yc/ustore/tpcc/tpcc
 
 #==============================
 

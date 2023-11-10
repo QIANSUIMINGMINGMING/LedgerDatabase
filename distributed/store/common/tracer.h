@@ -11,6 +11,7 @@
 
 #include <sys/time.h>
 #include <map>
+#include <stdint.h>
 #include <string>
 
 /* Trace details of an individual type of request. */

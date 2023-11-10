@@ -4,7 +4,7 @@
 wperc=(50)
 
 # Number of shards
-nshards=(16)
+nshards=(1)
 
 # Number of client processes per client node
 nclients=(10)

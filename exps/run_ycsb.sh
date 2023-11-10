@@ -2,11 +2,11 @@
 
 #============= Parameters to fill ============
 nshard=1           # number of shards
-nclient=20         # number of clients / machine
+nclient=10         # number of clients / machine
 rtime=120          # duration to run
 delay=100          # verification delay
 
-tlen=1            # transaction length
+tlen=10            # transaction length
 wper=50            # writes percentage
 rper=50            # reads percentage
 zalpha=0           # zipf alpha
@@ -40,7 +40,7 @@ for ((i=0; i<$nshard; i++))
 do
   echo "Starting shard$i replicas.."
   $expdir/start_replica.sh shard$i $expdir/shard$i.config \
-    "$bindir/$store -m $mode -e 0 -s 0 -N $nshard -n $i -t 100 -w ycsb -k 100000" $logdir
+    "perf record -o /home/muxi/ccpro/LedgerDatabase/server.perf -g fp -- $bindir/$store -m $mode -e 0 -s 0 -N $nshard -n $i -t 100 -w ycsb -k 100000" $logdir
 done
 
 # Wait a bit for all replicas to start up
