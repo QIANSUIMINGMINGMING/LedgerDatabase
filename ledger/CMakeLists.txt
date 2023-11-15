@@ -10,14 +10,12 @@ LIST(APPEND ledger_srcs ${mpt_srcs})
 AUX_SOURCE_DIRECTORY(ledgerdb/skiplist skiplist_srcs)
 LIST(APPEND ledger_srcs ${skiplist_srcs})
 
-AUX_SOURCE_DIRECTORY(qldb qldb_srcs)
-LIST(APPEND ledger_srcs ${qldb_srcs})
-
-AUX_SOURCE_DIRECTORY(sqlledger sqlledger_srcs)
-LIST(APPEND ledger_srcs ${sqlledger_srcs})
-
 ADD_LIBRARY(ledger_objs OBJECT ${ledger_srcs})
 ADD_LIBRARY(ledger SHARED $<TARGET_OBJECTS:ledger_objs>)
 
-LIST(APPEND LEDGER_LINKER_LIBS tbb)
+LIST(APPEND LEDGER_LINKER_LIBS ${CMAKE_SOURCE_DIR}/ledger/gpumpt/libgmpt.a)
 TARGET_LINK_LIBRARIES(ledger ${LEDGER_LINKER_LIBS})
+
+
+
+        

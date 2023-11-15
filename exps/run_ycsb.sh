@@ -1,5 +1,4 @@
 #!/bin/bash
-
 #============= Parameters to fill ============
 nshard=1           # number of shards
 nclient=10         # number of clients / machine
@@ -13,6 +12,8 @@ zalpha=0           # zipf alpha
 
 #============= Start Experiment =============
 . env.sh
+
+rm -rf $logdir
 
 replicas=`cat replicas`
 clients=`cat clients`
@@ -40,7 +41,7 @@ for ((i=0; i<$nshard; i++))
 do
   echo "Starting shard$i replicas.."
   $expdir/start_replica.sh shard$i $expdir/shard$i.config \
-    "perf record -o /home/muxi/ccpro/LedgerDatabase/server.perf -g fp -- $bindir/$store -m $mode -e 0 -s 0 -N $nshard -n $i -t 100 -w ycsb -k 100000" $logdir
+    "$bindir/$store -m $mode -e 0 -s 0 -N $nshard -n $i -t 100 -w ycsb -k 100000" $logdir
 done
 
 # Wait a bit for all replicas to start up
@@ -75,18 +76,18 @@ do
   $expdir/stop_replica.sh $expdir/shard$i.config > /dev/null 2>&1
 done
 
-# Measure Throughput, Latency, Abort rate
-mkdir -p $expdir/result
-for host in ${clients[@]}
-do
-  echo $host
-  ssh $host "cat $logdir/client.*.log | sort -g -k 3 > $logdir/client.log; \
-             rm -f $logdir/client.*.log; mkdir -p $expdir/result; \
-             source ~/.profile; python $expdir/process_ycsb.py $logdir/client.log $rtime $expdir/result/${wper}_${nshard}_${nclient}_${zalpha};
-             rsync $expdir/result/${wper}_${nshard}_${nclient}_${zalpha} ${master}:$expdir/result/client.$host.log;"
-done
+# # Measure Throughput, Latency, Abort rate
+# mkdir -p $expdir/result
+# for host in ${clients[@]}
+# do
+#   echo $host
+#   ssh $host "cat $logdir/client.*.log | sort -g -k 3 > $logdir/client.log; \
+#              rm -f $logdir/client.*.log; mkdir -p $expdir/result; \
+#              source ~/.profile; python $expdir/process_ycsb.py $logdir/client.log $rtime $expdir/result/${wper}_${nshard}_${nclient}_${zalpha};
+#              rsync $expdir/result/${wper}_${nshard}_${nclient}_${zalpha} ${master}:$expdir/result/client.$host.log;"
+# done
 
-echo "Processing logs"
-ssh ${master} "source ~/.profile; python $expdir/aggregate_ycsb.py $expdir/result $expdir/result/${wper}_${nshard}_${nclient}_${zalpha}; \
-               rm -f $expdir/result/client.*.log;"
+# echo "Processing logs"
+# ssh ${master} "source ~/.profile; python $expdir/aggregate_ycsb.py $expdir/result $expdir/result/${wper}_${nshard}_${nclient}_${zalpha}; \
+#                rm -f $expdir/result/client.*.log;"
 

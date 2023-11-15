@@ -2,3 +2,4 @@ build/
 exps/result/
 exps/shard*
 .vscode
+logs/

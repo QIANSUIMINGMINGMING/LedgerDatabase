@@ -1,26 +1,20 @@
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+CMAKE_MINIMUM_REQUIRED(VERSION 3.20)
 
-PROJECT(ledgebase)
+set(CMAKE_CUDA_ARCHITECTURES 60 61 62 70 72 75 86)
+set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
+set(CMAKE_CUDA_HOST_COMPILER g++-9)
+set(CMAKE_CXX_COMPILER g++-9)
+set(CMAKE_C_COMPILER gcc-9)
+
+PROJECT(ledgebase LANGUAGES CXX CUDA)
 
 LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 
 OPTION(LEDGERDB "Use LedgerDB" ON)
-OPTION(AMZQLDB "Use QLDB" OFF)
-OPTION(SQLLEDGER "Use SQL Ledger" OFF)
 
 if(LEDGERDB)
   message(STATUS "Use LedgerDB")
   add_definitions(-DLEDGERDB)
-endif()
-
-if(AMZQLDB)
-  message(STATUS "Use QLDB")
-  add_definitions(-DAMZQLDB)
-endif()
-
-if(SQLLEDGER)
-  message(STATUS "Use SQL Ledger")
-  add_definitions(-DSQLLEDGER)
 endif()
 
 SET(BOOST_COMPONENT "filesystem")
@@ -31,7 +25,8 @@ LIST(APPEND BOOST_COMPONENT "thread")
 include(cmake/Dependencies.cmake)
 
 enable_testing()
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O2 -pthread -lssl -Wall -Wno-unused-function -fPIC -fno-omit-frame-pointer")
+# SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O2 -pthread -lssl -Wall -Wno-unused-function -fPIC -c")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -O2 -pthread -lssl -Wall -Wno-unused-function -fPIC")
 
 MESSAGE(STATUS "${PROTOBUF_PROTOC_EXECUTABLE}")
 LIST(APPEND LEDGEBASE_INCLUDE_DIR "${CMAKE_SOURCE_DIR}")

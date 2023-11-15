@@ -6,9 +6,6 @@
 #include "distributed/store/common/timestamp.h"
 #include "distributed/store/common/backend/type.h"
 #include "ledger/ledgerdb/ledgerdb.h"
-#include "ledger/qldb/qldb.h"
-#include "ledger/qldb/bplus_config.h"
-#include "ledger/sqlledger/sqlledger.h"
 #include "distributed/proto/strong-proto.pb.h"
 
 #include "tbb/concurrent_hash_map.h"
@@ -52,8 +49,6 @@ class VersionedKVStore {
  private:
 
   std::unique_ptr<ledgebase::ledgerdb::LedgerDB> ldb;
-  std::unique_ptr<ledgebase::qldb::QLDB> qldb_;
-  std::unique_ptr<ledgebase::sqlledger::SQLLedger> sqlledger_;
 };
 
 #endif  /* _VERSIONED_KV_STORE_H_ */

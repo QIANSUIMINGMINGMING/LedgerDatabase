@@ -4,7 +4,7 @@
 rootdir=/home/muxi/ccpro/LedgerDatabase
 
 # log directory
-logdir="/home/muxi/logs"
+logdir="/home/muxi/ccpro/LedgerDatabase/logs"
 
 # master node ip address
 master=127.0.0.1

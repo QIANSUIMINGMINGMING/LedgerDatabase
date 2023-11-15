@@ -111,8 +111,6 @@ int taskGenerator(int clientid, int tid, int tlen, int wPer, int rPer, int timeo
   return 0;
 }
 
-#ifndef AMZQLDB
-
 int verifyThread(strongstore::Client* client, int idx, int tLen, int wPer, int duration, size_t timeout) {
   while (1) {
     millisleep(timeout);
@@ -163,8 +161,6 @@ int verifyThread(strongstore::Client* client, int idx, int tLen, int wPer, int d
   return 0;
 }
 
-#endif
-
 int
 txnThread(strongstore::Client* client, int idx, int tLen, int wPer, int rPer, int duration) {
   // Read in the keys from a file.
@@ -207,8 +203,6 @@ txnThread(strongstore::Client* client, int idx, int tLen, int wPer, int rPer, in
 
     fprintf(stderr, "%ld %ld.%06ld %ld.%06ld %ld %d %d\n", nTransactions,
         t1.tv_sec, t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, task.ops[0]);
-
-#ifndef AMZQLDB
     {
         boost::unique_lock<boost::shared_mutex> write(lck);
         for (auto& replicas : unverified_keys) {
@@ -236,7 +230,6 @@ txnThread(strongstore::Client* client, int idx, int tLen, int wPer, int rPer, in
             }
         }
     }
-#endif
     gettimeofday(&t1, NULL);
     if (((t1.tv_sec-t0.tv_sec)*1000000 + (t1.tv_usec-t0.tv_usec)) >
         duration*1000000) {
@@ -437,8 +430,6 @@ int main(int argc, char **argv) {
     actual_ops.emplace_back(std::async(std::launch::async, taskGenerator, idx, i, tLen, wPer, rPer, interval));
   }
   actual_ops.emplace_back(std::async(std::launch::async, txnThread, client, idx, tLen, wPer, rPer, duration));
-#ifndef AMZQLDB
   std::cout << "start verification thread" << std::endl;
   actual_ops.emplace_back(std::async(std::launch::async, verifyThread, client, idx, tLen, wPer, duration, timeout));
-#endif
 }

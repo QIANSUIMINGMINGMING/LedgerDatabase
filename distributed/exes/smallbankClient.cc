@@ -176,35 +176,31 @@ txnThread(strongstore::Client* client, int duration) {
     fprintf(stderr, "%d %ld.%06ld %ld.%06ld %ld %d %d\n", nTransactions,
         t1.tv_sec, t1.tv_usec, t2.tv_sec, t2.tv_usec, latency, status?1:0, task.op);
 
-#ifndef AMZQLDB
-    {
-        boost::unique_lock<boost::shared_mutex> write(lck);
-        for (auto& replicas : unverified_keys) {
-            if (verifymap.find(replicas.first) != verifymap.end()) {
-                for (auto& blocks : replicas.second) {
-                    if (verifymap[replicas.first].find(blocks.first) != verifymap[replicas.first].end()) {
-                        for (auto& keys : blocks.second) {
-                            verifymap[replicas.first][blocks.first].emplace(keys);
-                        }
-                    } else {
-                        std::set<std::string> ks(blocks.second.begin(), blocks.second.end());
-                        verifymap[replicas.first].emplace(blocks.first, ks);
+    boost::unique_lock<boost::shared_mutex> write(lck);
+    for (auto& replicas : unverified_keys) {
+        if (verifymap.find(replicas.first) != verifymap.end()) {
+            for (auto& blocks : replicas.second) {
+                if (verifymap[replicas.first].find(blocks.first) != verifymap[replicas.first].end()) {
+                    for (auto& keys : blocks.second) {
+                        verifymap[replicas.first][blocks.first].emplace(keys);
                     }
+                } else {
+                    std::set<std::string> ks(blocks.second.begin(), blocks.second.end());
+                    verifymap[replicas.first].emplace(blocks.first, ks);
                 }
-            } else {
-                std::map<uint64_t, std::set<std::string>> blocks;
-                for (auto& block : replicas.second) {
-                  std::set<std::string> keys;
-                  for (auto& k : block.second) {
-                    keys.emplace(k);
-                  }
-                  blocks.emplace(block.first, keys);
-                }
-                verifymap.emplace(replicas.first, blocks);
             }
+        } else {
+            std::map<uint64_t, std::set<std::string>> blocks;
+            for (auto& block : replicas.second) {
+              std::set<std::string> keys;
+              for (auto& k : block.second) {
+                keys.emplace(k);
+              }
+              blocks.emplace(block.first, keys);
+            }
+            verifymap.emplace(replicas.first, blocks);
         }
     }
-#endif
 
     if (((t2.tv_sec-t0.tv_sec)*1000000 + (t2.tv_usec-t0.tv_usec)) >
         duration*1000000) {
@@ -222,7 +218,6 @@ void millisleep(size_t t) {
   nanosleep(&req, NULL); 
 }
 
-#ifndef AMZQLDB
 int verifyThread(strongstore::Client* client, size_t timeout) {
   while (1) {
     millisleep(timeout);
@@ -271,8 +266,6 @@ int verifyThread(strongstore::Client* client, size_t timeout) {
     }
   }
 }
-
-#endif
 
 int taskGenerator(int timeout) {
   std::random_device rd;
@@ -434,7 +427,5 @@ int main(int argc, char **argv) {
     actual_ops.emplace_back(std::async(std::launch::async, taskGenerator, interval));
   }
   actual_ops.emplace_back(std::async(std::launch::async, txnThread, client, duration));
-#ifndef AMZQLDB
   actual_ops.emplace_back(std::async(std::launch::async, verifyThread, client, timeout));
-#endif
 }

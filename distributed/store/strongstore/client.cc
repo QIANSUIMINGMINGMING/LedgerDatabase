@@ -444,8 +444,6 @@ Client::Abort()
 int Client::Verify(std::map<int, std::map<uint64_t, std::vector<std::string>>>& keys) {
     // Contact the appropriate shard to set the value.
     int status = REPLY_OK;
-
-#ifndef AMZQLDB
     list<Promise*> promises;
     size_t nkeys = 0;
 
@@ -496,8 +494,6 @@ int Client::Verify(std::map<int, std::map<uint64_t, std::vector<std::string>>>& 
         }
         delete p;
     }
-#endif
-
     return status;
 }
 
