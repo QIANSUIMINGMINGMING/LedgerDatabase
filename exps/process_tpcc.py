@@ -100,19 +100,19 @@ outfile.write(str(sum(dlLatency)) + "\n")
 outfile.write(str(len(slLatency)) + "\n")
 outfile.write(str(sum(slLatency)) + "\n")
 
-# print "Transactions(All/Success): ", len(tLatency), len(sLatency)
-# print "Abort Rate: ", (float)(len(tLatency)-len(sLatency))/len(tLatency)
-# print "Throughput (All/Success): ", len(tLatency)/(end-start), len(sLatency)/(end-start)
-# print "Average Latency (all): ", sum(tLatency)/float(len(tLatency))
-# print "Median  Latency (all): ", tLatency[len(tLatency)/2]
-# print "99%tile Latency (all): ", tLatency[(len(tLatency) * 99)/100]
-# print "Average Latency (success): ", sum(sLatency)/float(len(sLatency))
-# print "Median  Latency (success): ", sLatency[len(sLatency)/2]
-# print "99%tile Latency (success): ", sLatency[(len(sLatency) * 99)/100]
-# print "Extra (all): ", tExtra
-# print "Extra (success): ", sExtra
-# if len(xLatency) > 0:
-#   print "X Transaction Latency: ", sum(xLatency)/float(len(xLatency))
-# if len(fLatency) > 0:
-#   print "Average Latency (failure): ", sum(fLatency)/float(len(tLatency)-len(sLatency))
-#   print "Extra (failure): ", fExtra
+print "Transactions(All/Success): ", len(tLatency), len(sLatency)
+print "Abort Rate: ", (float)(len(tLatency)-len(sLatency))/len(tLatency)
+print "Throughput (All/Success): ", len(tLatency)/(end-start), len(sLatency)/(end-start)
+print "Average Latency (all): ", sum(tLatency)/float(len(tLatency))
+print "Median  Latency (all): ", tLatency[len(tLatency)/2]
+print "99%tile Latency (all): ", tLatency[(len(tLatency) * 99)/100]
+print "Average Latency (success): ", sum(sLatency)/float(len(sLatency))
+print "Median  Latency (success): ", sLatency[len(sLatency)/2]
+print "99%tile Latency (success): ", sLatency[(len(sLatency) * 99)/100]
+print "Extra (all): ", tExtra
+print "Extra (success): ", sExtra
+if len(xLatency) > 0:
+  print "X Transaction Latency: ", sum(xLatency)/float(len(xLatency))
+if len(fLatency) > 0:
+  print "Average Latency (failure): ", sum(fLatency)/float(len(tLatency)-len(sLatency))
+  print "Extra (failure): ", fExtra

@@ -5,6 +5,7 @@ nshard=1           # number of shards
 nclient=10         # number of clients / machine
 rtime=120          # duration to run
 delay=100          # verification delay
+driver=ycsb        # ycsb or tpcc
 
 tlen=10            # transaction length
 wper=50            # writes percentage
@@ -34,11 +35,12 @@ echo "Zipf alpha: $zalpha"
 # Start all replicas and timestamp servers
 echo "Starting TimeStampServer replicas.."
 
+
 mkdir -p $logdir
 $bindir/timeserver -c $expdir/shard.tss.config -i 0 > $logdir/tss.replica0.log 2>$logdir/tss.replica0.err &
 
 echo "Starting shard0 replicas.."
-$bindir/$store -c $expdir/shard0.config -i 0 -m $mode -e 0 -s 0 -N $nshard -n 0 -t 100 -w ycsb -k 100000 > $logdir/shard0.replica0.log 2>$logdir/shard0.replica0.err &
+$bindir/$store -c $expdir/shard0.config -i 0 -m $mode -e 0 -s 0 -N $nshard -n 0 -t 100 -w $driver -k 100000 > $logdir/shard0.replica0.log 2>$logdir/shard0.replica0.err &
 
 # Wait a bit for all replicas to start up
 sleep 10
@@ -67,3 +69,5 @@ echo "Cleaning up"
 $expdir/stop_replica.sh $expdir/shard.tss.config > /dev/null 2>&1
 
 $expdir/stop_replica.sh $expdir/shard0.config > /dev/null 2>&1
+
+python parse_$driver.py result/ $wpers $servers $clients $thetas

@@ -2,6 +2,7 @@
 #define DB_H_
 
 #include <thread>
+#include <iostream>
 
 #include "rocksdb/db.h"
 #include "rocksdb/filter_policy.h"
@@ -36,7 +37,9 @@ class DB {
         rocksdb::NewBloomFilterPolicy(10, true));
     options_db.table_factory.reset(
         rocksdb::NewBlockBasedTableFactory(db_blk_tab_opts));
-    return rocksdb::DB::Open(options_db, db_path, &db_).ok();
+    rocksdb::Status status = rocksdb::DB::Open(options_db, db_path, &db_);
+    std::cout << "DB open status: " << status.ToString() << std::endl;
+    return status.ok();
   }
 
   inline bool Get(const std::string& key, std::string* value) const {

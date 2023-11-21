@@ -1,5 +1,5 @@
 build/
-exps/result/
+exps/result*/
 exps/shard*
 .vscode
 logs/

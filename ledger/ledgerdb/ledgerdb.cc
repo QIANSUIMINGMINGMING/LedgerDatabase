@@ -5,6 +5,7 @@
 #include <atomic>
 #include <iostream>
 #include <sys/time.h>
+#include <assert.h>
 
 #include "ledger/common/utils.h"
 #include "ledger/ledgerdb/types.h"
@@ -16,8 +17,8 @@ namespace ledgerdb {
 LedgerDB::LedgerDB(int timeout,
                    std::string dbpath,
                    std::string ledgerPath) {
-  db_.Open(dbpath);
-  ledger_.Open(ledgerPath);
+  assert(db_.Open(dbpath));
+  assert(ledger_.Open(ledgerPath));
   mt_.reset(new MerkleTree(&ledger_));
   sl_.reset(new SkipList(&db_));
   next_block_seq_ = 0;
@@ -36,6 +37,8 @@ LedgerDB::~LedgerDB() {
 
 // my_blk_hash|{blk_seq} -> {hash}
 // latest_commit -> {latest_built_blk}|{mt_root}
+// TODO BuildTreeGPU
+
 void LedgerDB::buildTree(int timeout) {
   while (!stop_.load()) {
     timeval t0, t1;
@@ -77,6 +80,7 @@ void LedgerDB::buildTree(int timeout) {
         mpt_ks.push_back(iter->first);
         mpt_vs.push_back(iter->second);
       }
+
       Hash mpt_root, newmptroot;
       CommitInfo prev, curr;
       std::string prev_digest;
@@ -88,9 +92,12 @@ void LedgerDB::buildTree(int timeout) {
         prev_digest = Hash::FromBase32(commit_info).ToBase32();
       }
       if (mpt_root.empty()) {
+        printf("MPT is empty\n");
+        printf("Insert %lu keys\n", mpt_ks.size());
         auto mpt = Trie(&db_, mpt_ks, mpt_vs);
         newmptroot = mpt.hash().Clone();
       } else {
+        printf("Insert %lu keys\n", mpt_ks.size());
         newmptroot = Trie(&db_, mpt_root).Set(mpt_ks, mpt_vs).Clone();
       }
 
@@ -103,7 +110,7 @@ void LedgerDB::buildTree(int timeout) {
       ++commit_seq_;
       gettimeofday(&t1, NULL);
       auto latency = (t1.tv_sec - t0.tv_sec)*1000000 + t1.tv_usec - t0.tv_usec;
-      //std::cerr << "persist " << latency << " " << mpt_ks.size() << " " << mt_new_hashes.size() << std::endl;
+      // std::cerr << "persist " << latency << " " << mpt_ks.size() << " " << mt_new_hashes.size() << std::endl;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
   }
@@ -122,8 +129,9 @@ uint64_t LedgerDB::Set(const std::vector<std::string> &keys,
   auto blk_seq_str = std::to_string(blk_seq);
   auto blk_key = "ledger-" + blk_seq_str;
   std::string blk_val = BlockData(keys, values).ToString();
-  ledger_.Put(blk_key, blk_val);
 
+  ledger_.Put(blk_key, blk_val);
+  
   std::vector<std::string> mpt_ks;
   for (size_t i = 0; i < keys.size(); i++) {
     mpt_ks.push_back(keys[i]);

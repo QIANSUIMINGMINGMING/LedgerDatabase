@@ -15,4 +15,4 @@ fi
 #   ssh ${host} "source ~/.profile; source ~/.bashrc; mkdir -p ${rootdir}/build; cd ${rootdir}/build; rm -rf *; cmake -DLEDGERDB=${ledgerdbopt} ..; make -j6;" &
 # done
 
-source ~/.profile; source ~/.bashrc; mkdir -p ${rootdir}/build; cd ${rootdir}/build; rm -rf *; cmake -DLEDGERDB=${ledgerdbopt} ..; make -j6
+source ~/.profile; source ~/.bashrc; mkdir -p ${rootdir}/build; cd ${rootdir}/build; rm -rf *; cmake -DLEDGERDB=${ledgerdbopt} -DCMAKE_BUILD_TYPE=debug ..; make -j6
