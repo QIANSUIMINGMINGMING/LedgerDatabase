@@ -76,8 +76,22 @@ do
   $expdir/stop_replica.sh $expdir/shard$i.config > /dev/null 2>&1
 done
 
-# # Measure Throughput, Latency, Abort rate
-# mkdir -p $expdir/result
+# Measure Throughput, Latency, Abort rate
+mkdir -p $expdir/result
+for host in ${clients[@]}
+do
+  echo $host
+  ssh $host "cat $logdir/client.*.log | sort -g -k 3 > $logdir/client.log; \
+             rm -f $logdir/client.*.log; mkdir -p $expdir/result; \
+             source ~/.profile; python $expdir/process_ycsb.py $logdir/client.log $rtime $expdir/result/${wper}_${nshard}_${nclient}_${zalpha};
+             rsync $expdir/result/${wper}_${nshard}_${nclient}_${zalpha} ${master}:$expdir/result/client.$host.log;"
+done
+
+echo "Processing logs"
+ssh ${master} "source ~/.profile; python $expdir/aggregate_ycsb.py $expdir/result $expdir/result/${wper}_${nshard}_${nclient}_${zalpha}; \
+               rm -f $expdir/result/client.*.log;"
+
+
 # for host in ${clients[@]}
 # do
 #   echo $host
@@ -85,9 +99,4 @@ done
 #              rm -f $logdir/client.*.log; mkdir -p $expdir/result; \
 #              source ~/.profile; python $expdir/process_ycsb.py $logdir/client.log $rtime $expdir/result/${wper}_${nshard}_${nclient}_${zalpha};
 #              rsync $expdir/result/${wper}_${nshard}_${nclient}_${zalpha} ${master}:$expdir/result/client.$host.log;"
-# done
-
-# echo "Processing logs"
-# ssh ${master} "source ~/.profile; python $expdir/aggregate_ycsb.py $expdir/result $expdir/result/${wper}_${nshard}_${nclient}_${zalpha}; \
-#                rm -f $expdir/result/client.*.log;"
-
+# # done

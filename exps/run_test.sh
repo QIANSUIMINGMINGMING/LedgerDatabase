@@ -2,7 +2,7 @@
 
 #============= Parameters to fill ============
 nshard=1           # number of shards
-nclient=10         # number of clients / machine
+nclient=1         # number of clients / machine
 rtime=120          # duration to run
 delay=100          # verification delay
 driver=ycsb        # ycsb or tpcc

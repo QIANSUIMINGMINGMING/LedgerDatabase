@@ -9,6 +9,7 @@
 
 #include "ledger/common/utils.h"
 #include "ledger/ledgerdb/types.h"
+#include "ledger/gpumpt/libgmpt.h"
 
 namespace ledgebase {
 
@@ -25,6 +26,7 @@ LedgerDB::LedgerDB(int timeout,
   commit_seq_ = 0;
   stop_.store(false);
   buildThread_.reset(new std::thread(&LedgerDB::buildTree, this, timeout));
+  gpumpt_ = init_mpt();
 }
 
 LedgerDB::~LedgerDB() {
@@ -33,13 +35,71 @@ LedgerDB::~LedgerDB() {
   if (buildThread_ != nullptr) {
     if (buildThread_->joinable()) buildThread_->join();
   }
+  free_mpt(gpumpt_);
 }
 
 // my_blk_hash|{blk_seq} -> {hash}
 // latest_commit -> {latest_built_blk}|{mt_root}
-// TODO BuildTreeGPU
 
-void LedgerDB::buildTree(int timeout) {
+namespace util {
+inline int key_bytes_to_hex(
+  const uint8_t *key_bytes, int key_bytes_size, uint8_t *key_hexs) {
+  int l = key_bytes_size * 2 + 1;
+  for (int i = 0; i < key_bytes_size; ++i) {
+    key_hexs[i * 2] = key_bytes[i] / 16;
+    key_hexs[i * 2 + 1] = key_bytes[i] % 16;
+  }
+  key_hexs[l - 1] = 16;
+  return key_bytes_size * 2 + 1;
+}
+
+inline int key_bytes_to_hex_size(int key_bytes_size) {
+  return key_bytes_size * 2 + 1;
+}
+
+inline uint8_t *element_start(
+  int *indexs, int i, uint8_t *all_bytes) {
+  return &all_bytes[indexs[2 * i]];
+}
+
+inline uint8_t *element_start(
+  int64_t *indexs, int i, uint8_t *all_bytes) {
+  return &all_bytes[indexs[2 * i]];
+}
+
+inline int element_size(const int *indexs, int i) {
+  return int(indexs[2 * i + 1] - indexs[2 * i] + 1);
+}
+
+inline void println_str(const uint8_t *str, size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    printf("%c ", str[i]);
+  }
+  printf("\n");
+}
+inline void println_hex(const uint8_t *str, size_t size) {
+  static const char hex2str[] = {'0', '1', '2', '3', '4', '5', '6', '7',
+                                 '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
+  char *buf = new char[size * 2 + 1]{};
+  for (size_t i = 0; i < size; ++i) {
+    int h = str[i] / 16;
+    int l = str[i] % 16;
+    buf[i * 2] = hex2str[h];
+    buf[i * 2 + 1] = hex2str[l];
+  }
+  buf[size * 2] = '\0';
+  printf("%s\n", buf);
+  delete[] buf;
+}
+inline void print_hex(const uint8_t *str, size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    printf("%02x ", str[i]);
+  }
+}
+}
+
+
+void LedgerDB::buildTreeGPU(int timeout) {
   while (!stop_.load()) {
     timeval t0, t1;
     gettimeofday(&t0, NULL);
@@ -51,6 +111,7 @@ void LedgerDB::buildTree(int timeout) {
     std::vector<std::string> mt_new_hashes;
     std::map<std::string, std::string> mpt_blks;
 
+    std::chrono::steady_clock::time_point begin1 = std::chrono::steady_clock::now();
     while (tree_queue_.try_pop(blk)) {
       if (!added) {
         first_block = blk.blk_seq;
@@ -66,6 +127,155 @@ void LedgerDB::buildTree(int timeout) {
       }
     }
 
+    std::chrono::steady_clock::time_point begine2 = std::chrono::steady_clock::now();
+    if (added) {
+      // update merkle tree
+      std::string prev_commit_seq = (commit_seq_ == 0) ?
+          "" : std::to_string(commit_seq_ - 1);
+      std::string root_key, root_hash;
+      mt_->update(first_block, mt_new_hashes, prev_commit_seq,
+          &root_key, &root_hash);
+
+      // start update MPT --------------------------------------------------
+      // TODO: collect into continuous
+
+      int keys_hexs_size = 0;
+      int values_bytes_size = 0;
+      const int nkv = mpt_blks.size();
+      int keys_index_size = mpt_blks.size() * 2;
+      int values_index_size = mpt_blks.size() * 2;
+      int *keys_hexs_index = new int[keys_index_size];
+      int64_t *values_bytes_index = new int64_t[values_index_size];
+      const uint8_t **values_hps = new const uint8_t*[nkv];
+
+      // printf("Start, nKey = nvalue = %d\n", keys_index_size, values_index_size);
+      int i = 0;
+      for (auto iter = mpt_blks.begin(); iter != mpt_blks.end(); iter++) {
+        // printf("i=%d\n", i);
+        keys_hexs_index[2 * i] = keys_hexs_size;
+        keys_hexs_size += util::key_bytes_to_hex_size(iter->first.size());
+        keys_hexs_index[2 * i + 1] = keys_hexs_size - 1;
+
+        values_bytes_index[2 * i] = values_bytes_size;
+        values_bytes_size += iter->second.size();
+        values_bytes_index[2 * i + 1] = values_bytes_size - 1;
+        i++;
+      }
+
+      // printf("Finish 1\n");
+
+      uint8_t *keys_hexs = new uint8_t[keys_hexs_size];
+      uint8_t *values_bytes = new uint8_t[values_bytes_size];
+
+      i = 0;
+      for (auto iter = mpt_blks.begin(); iter != mpt_blks.end(); iter++) {
+        const uint8_t *k = (uint8_t *)iter->first.c_str();
+        const uint8_t *v = (uint8_t *)iter->second.c_str();
+        const int ksize = iter->first.size();
+        const int vsize = iter->second.size();
+
+        util::key_bytes_to_hex(k, ksize, util::element_start(keys_hexs_index, i, keys_hexs));
+        memcpy(util::element_start(values_bytes_index, i, values_bytes), v, vsize);
+
+        values_hps[i] = util::element_start(values_bytes_index, i, values_bytes);
+        i++;
+      }
+
+      // std::vector<std::string> mpt_ks, mpt_vs;
+      // for(auto iter = mpt_blks.begin(); iter != mpt_blks.end(); iter++) {
+      //   mpt_ks.push_back(iter->first);
+      //   mpt_vs.push_back(iter->second);
+      // } 
+
+      Hash mpt_root, newmptroot;
+      CommitInfo prev, curr;
+      std::string prev_digest;
+      if (commit_seq_ > 0) {
+        std::string commit_info;
+        ledger_.Get("commit" + prev_commit_seq, &commit_info);
+        prev = CommitInfo(commit_info);
+        mpt_root = Hash::FromBase32(prev.mptroot);
+        prev_digest = Hash::FromBase32(commit_info).ToBase32();
+      }
+
+      std::chrono::steady_clock::time_point beginMPT = std::chrono::steady_clock::now();
+      if (mpt_root.empty()) {
+        printf("MPT is empty\n");
+      }
+      auto hash = insert_mpt_olc(gpumpt_, keys_hexs, keys_hexs_index, 
+                  values_bytes, values_bytes_index, values_hps, nkv);
+      printf("Finish Insert GPU MPT\n");
+      newmptroot = Hash(hash);
+      std::cout << "New Root From Me" << newmptroot << std::endl;
+
+      // if (mpt_root.empty()) {
+      //   printf("MPT is empty\n");
+      //   printf("Insert %lu keys\n", nkv);
+      //   auto mpt = Trie(&db_, mpt_ks, mpt_vs);
+      //   newmptroot = mpt.hash().Clone();
+
+      // } else {
+      //   printf("Insert %lu keys\n", nkv);
+      //   newmptroot = Trie(&db_, mpt_root).Set(mpt_ks, mpt_vs).Clone();
+      // }
+
+      // std::cout << "New Root from LedgerDB: " << newmptroot << std::endl;
+      // return;
+      std::chrono::steady_clock::time_point endMPT = std::chrono::steady_clock::now();
+
+      
+      std::string commit_entry = CommitInfo(commit_seq_, prev_digest,
+          last_block, root_hash, root_key, newmptroot.ToBase32()).ToString();
+      ledger_.Put("commit" + std::to_string(commit_seq_), commit_entry);
+      std::string newdigest = DigestInfo(commit_seq_, last_block,
+          Hash::ComputeFrom(commit_entry).ToBase32()).ToString();
+      ledger_.Put("digest", newdigest);
+      ++commit_seq_;
+
+      std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+      fprintf(stderr, "All time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begin1).count());
+      fprintf(stderr, "MPT time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(endMPT - beginMPT).count());
+      fprintf(stderr, "Update MT&DB time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begine2).count());
+      gettimeofday(&t1, NULL);
+      auto latency = (t1.tv_sec - t0.tv_sec)*1000000 + t1.tv_usec - t0.tv_usec;
+      // std::cerr << "persist " << latency << " " << mpt_ks.size() << " " << mt_new_hashes.size() << std::endl;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+  }
+}
+
+void LedgerDB::buildTree(int timeout) {
+  // TODO
+  // buildTreeGPU(timeout);
+  // return;
+  while (!stop_.load()) {
+    timeval t0, t1;
+    gettimeofday(&t0, NULL);
+
+    bool added = false;
+    uint64_t first_block;
+    uint64_t last_block;
+    Tree_Block blk;
+    std::vector<std::string> mt_new_hashes;
+    std::map<std::string, std::string> mpt_blks;
+
+    std::chrono::steady_clock::time_point begin1 = std::chrono::steady_clock::now();
+    while (tree_queue_.try_pop(blk)) {
+      if (!added) {
+        first_block = blk.blk_seq;
+      }
+      last_block = blk.blk_seq;
+      added = true;
+      std::string mt_blk_val;
+      ledger_.Get("ledger-"+std::to_string(blk.blk_seq), &mt_blk_val);
+      auto hash = Hash::ComputeFrom(mt_blk_val);
+      mt_new_hashes.push_back(hash.ToBase32());
+      for (size_t i = 0; i < blk.mpt_ks.size(); i++) {
+        mpt_blks[blk.mpt_ks[i]] = blk.mpt_ts;
+      }
+    }
+
+    std::chrono::steady_clock::time_point begine2 = std::chrono::steady_clock::now();
     if (added) {
       // update merkle tree
       std::string prev_commit_seq = (commit_seq_ == 0) ?
@@ -91,6 +301,8 @@ void LedgerDB::buildTree(int timeout) {
         mpt_root = Hash::FromBase32(prev.mptroot);
         prev_digest = Hash::FromBase32(commit_info).ToBase32();
       }
+
+      std::chrono::steady_clock::time_point beginMPT = std::chrono::steady_clock::now();
       if (mpt_root.empty()) {
         printf("MPT is empty\n");
         printf("Insert %lu keys\n", mpt_ks.size());
@@ -101,6 +313,9 @@ void LedgerDB::buildTree(int timeout) {
         newmptroot = Trie(&db_, mpt_root).Set(mpt_ks, mpt_vs).Clone();
       }
 
+      std::chrono::steady_clock::time_point endMPT = std::chrono::steady_clock::now();
+
+
       std::string commit_entry = CommitInfo(commit_seq_, prev_digest,
           last_block, root_hash, root_key, newmptroot.ToBase32()).ToString();
       ledger_.Put("commit" + std::to_string(commit_seq_), commit_entry);
@@ -108,6 +323,11 @@ void LedgerDB::buildTree(int timeout) {
           Hash::ComputeFrom(commit_entry).ToBase32()).ToString();
       ledger_.Put("digest", newdigest);
       ++commit_seq_;
+
+      std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+      fprintf(stderr, "All time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begin1).count());
+      fprintf(stderr, "MPT time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(endMPT - beginMPT).count());
+      fprintf(stderr, "Update MT&DB time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begine2).count());
       gettimeofday(&t1, NULL);
       auto latency = (t1.tv_sec - t0.tv_sec)*1000000 + t1.tv_usec - t0.tv_usec;
       // std::cerr << "persist " << latency << " " << mpt_ks.size() << " " << mt_new_hashes.size() << std::endl;
@@ -123,6 +343,7 @@ void LedgerDB::buildTree(int timeout) {
 uint64_t LedgerDB::Set(const std::vector<std::string> &keys,
                    const std::vector<std::string> &values,
                    const uint64_t &timestamp) {
+  // printf("The block contains %d kvs\n", keys.size());
   if (keys.size() == 0) return true;
   auto ts_str = std::to_string(timestamp);
   auto blk_seq = next_block_seq_++;
@@ -251,6 +472,44 @@ bool LedgerDB::GetRootDigest(uint64_t *blk_seq, std::string *root_digest) {
   return true;
 }
 
+// TODO
+bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
+                            const std::vector<size_t> key_blk_seqs,
+                            std::vector<Proof> &mt_proofs,
+                            std::vector<MPTProof> &mpt_proofs,
+                            std::string *root_digest,
+                            size_t *blk_seq,
+                            std::string *mpt_digest) {
+  std::string digest, commit;
+  ledger_.Get("digest", &digest);
+  auto commit_seq = std::to_string(DigestInfo(digest).commit_seq);
+  ledger_.Get("commit" + commit_seq, &commit);
+  CommitInfo cinfo(commit);
+  std::string mt_root_key = cinfo.mtrootkey;
+  *root_digest = cinfo.mtroot;
+  *blk_seq = cinfo.tip_block;
+  *mpt_digest = cinfo.mptroot;
+  auto mpt_hash = Hash::FromBase32(*mpt_digest);
+
+  auto mpt = Trie(&db_, mpt_hash);
+  size_t current = 0;
+  // printf("Get %d Proofs\n", keys.size());
+  for (size_t i = 0; i < keys.size(); i++) {
+    if (key_blk_seqs[i] != current) {
+      auto mt_proof = mt_->getProof(commit_seq, mt_root_key,
+          *blk_seq, key_blk_seqs[i]);
+      mt_proofs.push_back(mt_proof);
+      current = key_blk_seqs[i];
+    }
+
+    auto mpt_proof = mpt.GetProof(keys[i]);
+    // printf("Get Proof for key %s, proof size = %d\n", keys[i].c_str(), mpt_proof.size());
+    mpt_proofs.push_back(mpt_proof);
+  }
+
+  return true;
+}
+
 // {key} -> {value}|{ts}|{blk_seq}
 // {key}|{ts} -> {blk_seq}|{value}
 // my_ledger_block|{blk_seq} -> {key1}|{val1}/{key2}|{val2}/...
@@ -276,6 +535,7 @@ bool LedgerDB::GetProofs(const std::vector<std::string> &keys,
 
   auto mpt = Trie(&db_, mpt_hash);
   size_t current = 0;
+  // printf("Get %d Proofs\n", keys.size());
   for (size_t i = 0; i < keys.size(); i++) {
     if (key_blk_seqs[i] != current) {
       auto mt_proof = mt_->getProof(commit_seq, mt_root_key,
