@@ -27,6 +27,10 @@ message VerifyMessage {
   repeated bytes keys = 2;
 }
 
+message VerifyMultiBlock {
+  repeated VerifyMessage verifys = 1;
+}
+
 message AuditMessage {
   optional int64 seq = 1;
 }
@@ -59,6 +63,7 @@ message Request {
           RANGE = 6;
           BATCH_GET = 7;
           AUDIT = 8;
+          BATCH_VERIFY = 9;
      }
      required Operation op = 1;
      required uint64 txnid = 2;
@@ -71,6 +76,7 @@ message Request {
      optional RangeMessage range = 10;
      optional BatchGetMessage batchget = 11;
      optional AuditMessage audit = 12;
+     optional VerifyMultiBlock verifymulti = 13;
 }
 
 message LedgerDBProof {
@@ -82,6 +88,8 @@ message LedgerDBProof {
     repeated bytes mpt_chunks = 6;
     repeated int32 mpt_pos = 7;
 }
+
+// TODO LedgerDBProofs
 
 message QLDBProof {
     optional bytes key = 1;

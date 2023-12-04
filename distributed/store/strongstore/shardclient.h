@@ -45,6 +45,10 @@ public:
     bool GetProof(const uint64_t block,
                   const std::vector<string>& keys,
                   Promise* promise = NULL);
+    bool GetProofMultiBlock(const std::map<uint64_t, std::vector<string>> &keys,
+                        Promise *promise);
+    bool BlockVerifiable(const uint64_t block);
+
     bool Audit(const uint64_t& seq,
                Promise* promise = NULL);
     void Prepare(uint64_t id, 
@@ -75,10 +79,20 @@ private:
     size_t uid;
     ledgebase::DB db_;
 
+    char device_; // c (cpu) or g (gpu)
+
     void GetProofCallback(size_t uid,
                           const std::vector<std::string>& keys,
                           const std::string& request_str,
                           const std::string& reply_str);
+    void GetProofMultiBlockCallbackGPU(size_t uid,
+                             const std::map<uint64_t, std::vector<std::string>>& keys,
+                             const std::string& request_str,
+                             const std::string& reply_str);
+    void GetProofMultiBlockCallback(size_t uid,
+                                    const std::map<uint64_t, std::vector<std::string>>& keys,
+                                    const std::string& request_str,
+                                    const std::string& reply_str);
     void AuditCallback(uint64_t seq, size_t uid,
                        const std::string& request_str,
                        const std::string& reply_str);

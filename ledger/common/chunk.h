@@ -92,6 +92,11 @@ class Chunk {
   inline const Hash& hash() const {
     return hash_.empty() ? forceHash() : hash_;
   }
+
+  inline bool hashEmpty() const {
+    return hash_.empty();
+  }
+
   // force to re-compute chunk hash
   inline const Hash& forceHash() const {
     hash_ = Hash::ComputeFrom(head_, numBytes());

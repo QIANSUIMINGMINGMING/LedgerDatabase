@@ -43,6 +43,10 @@ public:
                 const std::vector<std::string>& keys,
                 Promise *promise = NULL);
 
+    bool VerifyMultiBlock(const std::map<uint64_t, std::vector<std::string>> &keys,
+                          Promise *promise = NULL);
+    bool BlockVerifiable(const uint64_t block);
+
     bool Audit(const uint64_t seq, Promise *promise = NULL);
 
 private:

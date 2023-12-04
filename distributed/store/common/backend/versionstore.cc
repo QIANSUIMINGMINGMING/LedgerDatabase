@@ -76,6 +76,21 @@ bool VersionedKVStore::GetRange(const std::string &start,
   }
   return true;
 }
+namespace util {
+inline const uint8_t *element_start(
+  const int *indexs, int i, const uint8_t *all_bytes) {
+  return &all_bytes[indexs[2 * i]];
+}
+
+inline const uint8_t *element_start(
+  const int64_t *indexs, int i, const uint8_t *all_bytes) {
+  return &all_bytes[indexs[2 * i]];
+}
+
+inline int element_size(const int *indexs, int i) {
+  return int(indexs[2 * i + 1] - indexs[2 * i] + 1);
+}
+}
 
 bool VersionedKVStore::GetProof(
     const std::map<uint64_t, std::vector<std::string>>& keys,
@@ -90,37 +105,96 @@ bool VersionedKVStore::GetProof(
   std::string mptdigest;
   size_t block;
 
+  // printf("[V] Start a GetProof:\n");
   std::vector<std::string> ks;
   std::vector<uint64_t> blks;
   for (auto& vkey : keys) {
+    // printf("[V] block[%ld] has %ld keys\n", vkey.first, vkey.second.size());
     for (auto& k : vkey.second) {
       ks.push_back(k);
       blks.push_back(vkey.first);
     }
   }
   nkey = ks.size();
+  // printf("[V] before start a getproof\n");
   
-  ldb->GetProofs(ks, blks, mtproof, mptproof, &mtdigest,
-      &block, &mptdigest);
-  auto digest = reply->mutable_digest();
-  digest->set_block(block);
-  digest->set_hash(mtdigest);
-  digest->set_mpthash(mptdigest);
-  
-  for (size_t i = 0; i < mtproof.size(); ++i) {
-    auto p = reply->add_proof();
-    p->set_val(mtproof[i].value);
-    p->set_hash(mtproof[i].digest);
-    for (size_t j = 0; j < mtproof[i].proof.size(); ++j) {
-      p->add_proof(mtproof[i].proof[j]);
-      p->add_mt_pos(mtproof[i].pos[j]);
+
+  const char *cpu_or_gpu = getenv("device");
+  assert(cpu_or_gpu);
+  if (cpu_or_gpu[0] == 'c') {
+    ldb->GetProofs(ks, blks, mtproof, mptproof, &mtdigest,
+        &block, &mptdigest);
+
+    auto digest = reply->mutable_digest();
+    digest->set_block(block);
+    digest->set_hash(mtdigest);
+    digest->set_mpthash(mptdigest);
+    
+    for (size_t i = 0; i < mtproof.size(); ++i) {
+      auto p = reply->add_proof();
+      p->set_val(mtproof[i].value);
+      p->set_hash(mtproof[i].digest);
+      for (size_t j = 0; j < mtproof[i].proof.size(); ++j) {
+        p->add_proof(mtproof[i].proof[j]);
+        p->add_mt_pos(mtproof[i].pos[j]);
+      }
+
+      printf("Set mpt proof[%d] for key[%s]\n", i, ks[i].c_str());
+      p->set_mptvalue(mptproof[i].GetValue());
+      for (size_t j = 0; j < mptproof[i].MapSize(); ++j) {
+        p->add_mpt_chunks(mptproof[i].GetMapChunk(j));
+        p->add_mpt_pos(mptproof[i].GetMapPos(j));
+      }
     }
-    p->set_mptvalue(mptproof[i].GetValue());
-    for (size_t j = 0; j < mptproof[i].MapSize(); ++j) {
-      p->add_mpt_chunks(mptproof[i].GetMapChunk(j));
-      p->add_mpt_pos(mptproof[i].GetMapPos(j));
+
+  } else {
+    assert(cpu_or_gpu[0] == 'g');
+    const uint8_t *mpt_proofs = nullptr;
+    const int *mpt_proof_indexs = nullptr;
+    const uint8_t **mpt_values_hps = nullptr;
+    const int *mpt_values_sizes = nullptr;
+
+    // ldb->GetProofsGPU(ks, blks, mtproof, mptproof, &mtdigest,
+    //       &block, &mptdigest);
+    ldb->GetProofsGPU(ks, blks, mtproof, 
+      mpt_proofs, mpt_proof_indexs, 
+      mpt_values_hps, mpt_values_sizes, 
+      &mtdigest, &block, &mptdigest);
+
+    auto digest = reply->mutable_digest();
+
+    digest->set_block(block);
+    digest->set_hash(mtdigest);
+    digest->set_mpthash(mptdigest);
+    
+    for (size_t i = 0; i < mtproof.size(); ++i) {
+      auto p = reply->add_proof();
+      p->set_val(mtproof[i].value);
+      p->set_hash(mtproof[i].digest);
+      for (size_t j = 0; j < mtproof[i].proof.size(); ++j) {
+        p->add_proof(mtproof[i].proof[j]);
+        p->add_mt_pos(mtproof[i].pos[j]);
+      }
+
+      // p->set_mptvalue(mptproof[i].GetValue());
+      // for (size_t j = 0; j < mptproof[i].MapSize(); ++j) {
+      //   p->add_mpt_chunks(mptproof[i].GetMapChunk(j));
+      //   p->add_mpt_pos(mptproof[i].GetMapPos(j));
+      // }
+      const uint8_t *value = mpt_values_hps[i];
+      const int value_size = mpt_values_sizes[i];
+      const uint8_t *proof = util::element_start(mpt_proof_indexs, i, mpt_proofs);
+      const int proof_size = util::element_size(mpt_proof_indexs, i);
+      p->set_mptvalue(value, value_size);
+      p->add_mpt_chunks(proof, proof_size);
     }
-  }
+  } 
+
+
+
+  printf("Verify nkeys = %d, mpt_proof.size = %d, mt_proof.size = %d, reply.proof_size= %d\n", 
+         nkey, mptproof.size(), mtproof.size(), reply->proof_size());
+
   gettimeofday(&t1, NULL);
   auto lat = (t1.tv_sec - t0.tv_sec)*1000000 + t1.tv_usec - t0.tv_usec;
   //std::cout << "getproof " << lat << " " << nkey << std::endl;

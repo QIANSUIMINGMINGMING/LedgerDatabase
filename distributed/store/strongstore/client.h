@@ -40,6 +40,8 @@ public:
     bool Commit(std::map<int, std::map<uint64_t, std::vector<std::string>>>& keys);
     void Abort();
     int Verify(std::map<int, std::map<uint64_t, std::vector<std::string>>>& keys);
+    int VerifyMultiBlock(std::map<int, std::map<uint64_t, std::vector<std::string>>>& keys);
+
     std::vector<int> Stats();
     int Audit(std::map<int, uint64_t>& seqs);
 

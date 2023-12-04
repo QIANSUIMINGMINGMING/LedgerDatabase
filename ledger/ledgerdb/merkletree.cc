@@ -79,7 +79,7 @@ void MerkleTree::update(const uint64_t starting_block_seq,
 Proof MerkleTree::getProof(const std::string& commit_seq,
                            const std::string& root_key,
                            const uint64_t tip,
-                           const uint64_t seq) const {
+                           const uint64_t seq) const { // block id
   Proof proof;
   std::string digest, value;
   ledger_->Get(root_key, &digest);

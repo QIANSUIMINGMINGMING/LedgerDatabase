@@ -398,7 +398,8 @@ bool Client::Commit(std::map<int, std::map<uint64_t, std::vector<std::string>>>&
         }
 
         // Send commits
-
+        
+        // keys: <partition, <block, [keys]>>
         map<int, Promise *> promises;
         for (auto& p : participants) {
                         promises.emplace(p, new Promise(PREPARE_TIMEOUT));
@@ -441,15 +442,68 @@ Client::Abort()
     }
 }
 
+int Client::VerifyMultiBlock(std::map<int, std::map<uint64_t, std::vector<std::string>>>& keys) {
+    // Contact the appropriate shard to set the value.
+    int status = REPLY_OK;
+    list<Promise*> promises;
+    size_t nkeys = 0;
+
+    for (auto k = keys.begin(); k != keys.end();) { // shards
+        bool verifiable = true;
+        // just calculate the number of ke
+        for (auto block = k->second.begin(); block != k->second.end();) { // blocks
+            if (!verifiable) {
+                block = k->second.erase(block);
+            } else {
+                // check whether the block is not verifiable
+                // tip_block < block
+                if (!bclient[k->first]->BlockVerifiable(block->first)) {
+                  verifiable = false;
+                  break;
+                }
+                nkeys += block->second.size();
+                ++block;
+            }
+        }
+
+        promises.push_back(new Promise());
+        assert(bclient[k->first]->VerifyMultiBlock(k->second, promises.back()));
+        ++k;
+    }
+    
+    std::cout << "verifynkeys " << nkeys << std::endl;
+
+    for (auto& p : promises) {
+        if (p->GetReply() != REPLY_OK) {
+          status = p->GetReply();
+        }
+        delete p;
+    }
+    return status;
+}
+
 int Client::Verify(std::map<int, std::map<uint64_t, std::vector<std::string>>>& keys) {
     // Contact the appropriate shard to set the value.
     int status = REPLY_OK;
     list<Promise*> promises;
     size_t nkeys = 0;
 
-    for (auto k = keys.begin(); k != keys.end();) {
+    // TODO: if not verifiable, then remains in the keys for further verification
+    // client->Verify returns false only when the block id is not persisted
+    
+    printf("[V] Start a verify: \n");
+    // for (auto k = keys.begin(); k != keys.end();) {
+    //   for (auto block = k->second.begin(); block != k->second.end(); block++) {
+    //     printf("[V] block[%ld] has %d keys unverified\n", 
+    //     block->first,
+    //     block->second.size());
+    //   }
+    // }
+    // printf("[V] Before starting a verify\n");
+
+    for (auto k = keys.begin(); k != keys.end();) { // shards
         bool verifiable = true;
-        for (auto block = k->second.begin(); block != k->second.end();) {
+        for (auto block = k->second.begin(); block != k->second.end();) { // blocks
             if (!verifiable) {
                 block = k->second.erase(block);
             } else {

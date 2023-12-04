@@ -85,7 +85,7 @@ Hash Trie::Set(const std::vector<std::string>& keys,
   Chunk new_root(root_node_->head());
   for (size_t i = 0; i < keys.size(); ++i) {
     std::string encoded_key = MPTConfig::KeybytesToHex(keys[i]);
-    Chunk val_chunk = MPTValueNode::Encode(vals[i]);
+        Chunk val_chunk = MPTValueNode::Encode(vals[i]);
     new_root = Insert(&new_root, encoded_key, &val_chunk);
   }
   Hash new_root_hash = new_root.hash().Clone();
@@ -431,11 +431,11 @@ void Trie::TryGetProof(const Chunk* node, const std::string& key,
 
 bool MPTProof::VerifyProof(const Hash& digest, const std::string& key) const {
   std::string encoded_key = MPTConfig::KeybytesToHex(key);
-  size_t pos = 0;
+  size_t pos = 0, i = 0;
   auto map_size = map_chunks_.size();
   Hash target = digest;
-
-  for (size_t i = 0; i < map_size; ++i) {
+  
+  for (; i < map_size && pos < encoded_key.size(); ++i) {
     auto nodestr = GetMapChunk(i);
     Chunk chunk(reinterpret_cast<const unsigned char*>(nodestr.c_str()));
     auto calculated = chunk.hash();
@@ -443,6 +443,12 @@ bool MPTProof::VerifyProof(const Hash& digest, const std::string& key) const {
       return false;
 
     if (chunk.type() == ChunkType::kMPTFull) {
+
+      // compare branch
+      if (map_pos_[i] != encoded_key[i]) {
+        return false;
+      }
+
       ++pos;
       MPTFullNode fullnode(&chunk);
       auto hashchk = fullnode.getChildAtIndex(map_pos_[i]);
@@ -459,6 +465,15 @@ bool MPTProof::VerifyProof(const Hash& digest, const std::string& key) const {
     } else {
       if (!value_.empty()) {
         MPTShortNode shortnode(&chunk);
+
+        // compare key
+        auto target_key = shortnode.getKey();
+        auto curr_key = encoded_key.substr(pos);
+        size_t match_len = MPTConfig::PrefixLen(curr_key, target_key);
+        if (match_len != target_key.size()) {
+          return false;
+        }
+        
         auto child = shortnode.childNode();
         if (child.type() == ChunkType::kMPTHash) {
           MPTHashNode hashnode(&child);
@@ -472,9 +487,10 @@ bool MPTProof::VerifyProof(const Hash& digest, const std::string& key) const {
         }
         pos += shortnode.getKey().length();
       } else {
+        // TODO: what is this for?
         MPTShortNode shortnode(&chunk);
         auto target_key = shortnode.getKey();
-        auto curr_key = key.substr(pos);
+        auto curr_key = key.substr(pos); // encoded key
         size_t match_len = MPTConfig::PrefixLen(curr_key, target_key);
         if (match_len != target_key.size()) {
           return true;
@@ -484,6 +500,9 @@ bool MPTProof::VerifyProof(const Hash& digest, const std::string& key) const {
       }
     }
   }
+  if (pos != encoded_key.size() || i != pos) {
+    return false;
+  } 
   return true;
 }
 

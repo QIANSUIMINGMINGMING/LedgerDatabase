@@ -25,7 +25,12 @@ LedgerDB::LedgerDB(int timeout,
   next_block_seq_ = 0;
   commit_seq_ = 0;
   stop_.store(false);
-  buildThread_.reset(new std::thread(&LedgerDB::buildTree, this, timeout));
+  assert(getenv("device"));
+  if (getenv("device")[0] == 'c') {
+    buildThread_.reset(new std::thread(&LedgerDB::buildTree, this, timeout));
+  } else if(getenv("device")[0] == 'g')  {
+    buildThread_.reset(new std::thread(&LedgerDB::buildTreeGPU, this, timeout));
+  }
   gpumpt_ = init_mpt();
 }
 
@@ -245,7 +250,6 @@ void LedgerDB::buildTreeGPU(int timeout) {
 }
 
 void LedgerDB::buildTree(int timeout) {
-  // TODO
   // buildTreeGPU(timeout);
   // return;
   while (!stop_.load()) {
@@ -356,6 +360,7 @@ uint64_t LedgerDB::Set(const std::vector<std::string> &keys,
   std::vector<std::string> mpt_ks;
   for (size_t i = 0; i < keys.size(); i++) {
     mpt_ks.push_back(keys[i]);
+    // printf("value = %s@%s, blk_seq = %d\n", blk_seq_str.c_str(), values[i].c_str(), blk_seq);
     sl_->insert("skiplist_" + keys[i], timestamp,
         blk_seq_str + "@" + values[i]);
     skiplist_head_[keys[i]] = timestamp;
@@ -393,6 +398,7 @@ bool LedgerDB::GetValues(const std::vector<std::string> &keys,
       continue;
     }
     SkipNode skipnode(node);
+    // printf("skipnode.value = %s\n", skipnode.value.c_str());
     auto res = Utils::splitBy(skipnode.value, '@');
 
     values.push_back(std::make_pair(skiplist_head_[keys[i]],
@@ -476,7 +482,13 @@ bool LedgerDB::GetRootDigest(uint64_t *blk_seq, std::string *root_digest) {
 bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
                             const std::vector<size_t> key_blk_seqs,
                             std::vector<Proof> &mt_proofs,
-                            std::vector<MPTProof> &mpt_proofs,
+
+                            const uint8_t *&mpt_proofs,
+                            const int *&mpt_proofs_indexs,
+                            const uint8_t **&mpt_values_hps,
+                            const int *&mpt_values_sizes,
+
+                            // std::vector<MPTProof> &mpt_proofs,
                             std::string *root_digest,
                             size_t *blk_seq,
                             std::string *mpt_digest) {
@@ -489,11 +501,15 @@ bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
   *root_digest = cinfo.mtroot;
   *blk_seq = cinfo.tip_block;
   *mpt_digest = cinfo.mptroot;
-  auto mpt_hash = Hash::FromBase32(*mpt_digest);
+  // auto mpt_hash = Hash::FromBase32(*mpt_digest);
 
-  auto mpt = Trie(&db_, mpt_hash);
+  // auto mpt = Trie(&db_, mpt_hash);
   size_t current = 0;
   // printf("Get %d Proofs\n", keys.size());
+  
+  std::chrono::steady_clock::time_point 
+  begin_mt = std::chrono::steady_clock::now();
+
   for (size_t i = 0; i < keys.size(); i++) {
     if (key_blk_seqs[i] != current) {
       auto mt_proof = mt_->getProof(commit_seq, mt_root_key,
@@ -501,11 +517,65 @@ bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
       mt_proofs.push_back(mt_proof);
       current = key_blk_seqs[i];
     }
-
-    auto mpt_proof = mpt.GetProof(keys[i]);
-    // printf("Get Proof for key %s, proof size = %d\n", keys[i].c_str(), mpt_proof.size());
-    mpt_proofs.push_back(mpt_proof);
   }
+
+  std::chrono::steady_clock::time_point
+  end_mt = std::chrono::steady_clock::now();
+  std::chrono::steady_clock::time_point 
+  begin_mpt = std::chrono::steady_clock::now();
+
+  // TODO: 这里直接返回我们自己的path格式
+
+  // collect into continous
+  int keys_hexs_size = 0;
+  const int n_keys = keys.size();
+  int keys_index_size = n_keys * 2;
+  int *keys_hexs_index = new int[keys_index_size];
+  
+  for (int i = 0; i < keys.size(); i++) {
+    keys_hexs_index[2 * i] = keys_hexs_size;
+    keys_hexs_size += util::key_bytes_to_hex_size(keys[i].size());
+    keys_hexs_index[2 * i + 1] = keys_hexs_size - 1;
+  }
+
+  uint8_t *keys_hexs = new uint8_t[keys_hexs_size];
+
+  for (int i = 0; i < keys.size(); i++) {
+    const uint8_t *k = reinterpret_cast<const uint8_t*>(keys[i].c_str());
+    const int ksize = keys[i].size();
+    util::key_bytes_to_hex(k, ksize, util::element_start(keys_hexs_index, i, keys_hexs));
+  }
+  
+  const uint8_t *hash = nullptr;
+  int hash_size = 0;
+  get_proofs(
+    gpumpt_, keys_hexs, keys_hexs_index, n_keys,    // in
+    mpt_values_hps, mpt_values_sizes,               // value
+    mpt_proofs, mpt_proofs_indexs,                  // proof
+    hash, hash_size);                               // hash
+
+  // TODO compare mptroot
+
+  std::string newmptroot = Hash(hash).ToBase32();
+  if (newmptroot != cinfo.mptroot) {
+    printf("The returned root is not the same with it from DB\n");
+    std::cout << "newmptroot: " << newmptroot << std::endl
+              << "from DB: " << cinfo.mptroot << std::endl;
+    *mpt_digest = newmptroot;
+  }
+
+  // for (size_t i = 0; i < keys.size(); i++) {
+  //   auto mpt_proof = mpt.GetProof(keys[i]);
+  //   mpt_proofs.push_back(mpt_proof);
+  // }
+
+  std::chrono::steady_clock::time_point 
+  end_mpt = std::chrono::steady_clock::now();
+
+  printf("get proof mt time = %d us, mpt_time = %d us\n", 
+    std::chrono::duration_cast<std::chrono::microseconds>(end_mt - begin_mt).count(),
+    std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin_mpt).count()
+  );
 
   return true;
 }
@@ -538,16 +608,20 @@ bool LedgerDB::GetProofs(const std::vector<std::string> &keys,
   // printf("Get %d Proofs\n", keys.size());
   for (size_t i = 0; i < keys.size(); i++) {
     if (key_blk_seqs[i] != current) {
+      // MT get proof: get the proof of a block
       auto mt_proof = mt_->getProof(commit_seq, mt_root_key,
           *blk_seq, key_blk_seqs[i]);
       mt_proofs.push_back(mt_proof);
       current = key_blk_seqs[i];
     }
 
+    // MPT get proof: get the proof of a key in the MPT
     auto mpt_proof = mpt.GetProof(keys[i]);
     mpt_proofs.push_back(mpt_proof);
   }
 
+  // len(mpt_proofs) == #n keys
+  // len(mt_proofs) == #n blocks
   return true;
 }
 

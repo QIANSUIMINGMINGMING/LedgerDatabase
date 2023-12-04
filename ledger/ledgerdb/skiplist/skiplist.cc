@@ -114,11 +114,13 @@ SkipNode SkipList::makeNode (int key, std::string val, int level) {
     failure, in the form of null pointer.
 */
 std::string SkipList::find(const std::string& prefix, long searchKey) {
+  // printf("skip list find %s %ld\n", prefix.c_str(), searchKey);
   std::string headstr;
   db_->Get(prefix + "|head", &headstr);
   if (headstr.size() == 0) {
     return "";
   }
+  // printf("headstr = %s\n", headstr.c_str());
   SkipNode head(headstr);
   if (head.key == searchKey) {
     return headstr;
@@ -153,6 +155,7 @@ std::string SkipList::find(const std::string& prefix, long searchKey) {
 void SkipList::insert(const std::string& prefix, long searchKey,
     std::string newValue) {
   // if new skiplist
+  // printf("skip list insert %s %ld %s\n", prefix.c_str(), searchKey, newValue.c_str());
   std::string headstr;
   db_->Get(prefix + "|head", &headstr);
   if (headstr.size() == 0) {

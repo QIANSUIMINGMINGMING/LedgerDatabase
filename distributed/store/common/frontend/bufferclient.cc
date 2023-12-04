@@ -114,6 +114,17 @@ bool BufferClient::Verify(const uint64_t block,
     return txnclient->GetProof(block, keys, promise);
 }
 
+bool BufferClient::VerifyMultiBlock(
+    const std::map<uint64_t, std::vector<std::string>> &keys,
+    Promise *promise) {
+    return txnclient->GetProofMultiBlock(keys, promise);
+}
+
+bool BufferClient::BlockVerifiable(const uint64_t block) {
+    return txnclient->BlockVerifiable(block);
+}
+
+
 bool BufferClient::Audit(const uint64_t seq,
                          Promise *promise) {
     return txnclient->Audit(seq, promise);

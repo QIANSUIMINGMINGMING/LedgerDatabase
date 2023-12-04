@@ -20,7 +20,7 @@ Replica::ExecuteUnlogged(const UnloggedRequest &msg,
 {
     string res;
     UnloggedUpcall(msg.op(), res);
-
+    
     reply.set_reply(res);
 }
 

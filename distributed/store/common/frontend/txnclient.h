@@ -39,6 +39,10 @@ public:
     virtual bool GetProof(const uint64_t block,
                           const std::vector<string>& keys,
                           Promise* promise = NULL) = 0;
+    virtual bool GetProofMultiBlock(const std::map<uint64_t, std::vector<string>>& keys,
+                                    Promise* promise = NULL) = 0;
+    virtual bool BlockVerifiable(const uint64_t block) = 0;
+
 
     virtual void BatchGet(uint64_t tid,                                        
                           const std::vector<std::string> &keys,                

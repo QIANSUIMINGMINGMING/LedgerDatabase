@@ -73,6 +73,10 @@ void
 OCCStore::Load(const vector<string> &keys, const vector<string> &values,
         const Timestamp &timestamp)
 {
+  // printf("OCCStore.load()\n");
+  // for (size_t i = 0; i < keys.size(); ++i) {
+  //   printf("  %s -> %s\n", keys[i].c_str(), values[i].c_str());
+  // }
   store.put(keys, values, timestamp, nullptr);
 }
 

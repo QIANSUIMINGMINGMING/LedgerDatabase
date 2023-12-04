@@ -1,4 +1,5 @@
 #include "distributed/store/strongstore/shardclient.h"
+#include "ledger/gpumpt/libgmpt.h"
 #include <sys/time.h>
 
 namespace strongstore {
@@ -37,6 +38,10 @@ ShardClient::ShardClient(Mode mode, const string &configPath,
   audit_block = -1;
   auto status = db_.Open("/tmp/auditor"+std::to_string(shard)+".store");
   if (!status) std::cout << "auditor db open failed" << std::endl;
+
+  assert(getenv("device"));
+  device_ = getenv("device")[0];
+  assert(device_ == 'c' || device_ == 'g');
 }
 
 ShardClient::~ShardClient()
@@ -116,10 +121,82 @@ ShardClient::GetRange(uint64_t id, const std::string& from,
 }
 
 bool
+ShardClient::GetProofMultiBlock(
+  const std::map<uint64_t, std::vector<string>> &keys,
+  Promise *promise) {
+  // TODO
+  // printf("ShardClient::GetProofMultiBlock() unimplemented\n");
+  // create request
+
+  // TODO
+  string request_str;
+  Request request;
+  request.set_op(Request::BATCH_VERIFY);
+  request.set_txnid(0);
+  auto verify_multi = request.mutable_verifymulti();
+  for (auto& k : keys) {
+    auto verify = verify_multi->add_verifys();
+    verify->set_block(k.first);
+    for (auto& kk : k.second) {
+      verify->add_keys(kk);
+    }
+  }
+  request.SerializeToString(&request_str);
+
+  int timeout = 100000;
+  if (device_ == 'c') {
+    transport->Timer(0, [=]() {
+      verifyPromise.emplace(uid, promise);
+      ++uid;
+      client->InvokeUnlogged(replica,
+                            request_str,
+                            bind(&ShardClient::GetProofMultiBlockCallback,
+                              this,
+                              uid - 1,
+                              keys,
+                              placeholders::_1,
+                              placeholders::_2),
+                            bind(&ShardClient::GetTimeout,
+                              this),
+                            timeout);
+    });
+  } else {
+    assert(device_ == 'g');
+    transport->Timer(0, [=]() {
+      verifyPromise.emplace(uid, promise);
+      ++uid;
+      client->InvokeUnlogged(replica,
+                  request_str,
+                  bind(&ShardClient::GetProofMultiBlockCallbackGPU,
+                    this,
+                    uid - 1,
+                    keys,
+                    placeholders::_1,
+                    placeholders::_2),
+                  bind(&ShardClient::GetTimeout,
+                    this),
+                  timeout); // timeout in ms
+    });
+  }
+  return true;
+  
+}
+
+bool
+ShardClient::BlockVerifiable(const uint64_t block) {
+  if (tip_block < block) {
+    printf("tip_block < block, unverifiable\n");
+    return false;
+  } 
+  return true;
+}
+
+bool
 ShardClient::GetProof(const uint64_t block,
                       const std::vector<string>& keys,
                       Promise* promise) {
   if (tip_block < block) {
+    printf("tip_block < block, unverifiable\n");
     promise->Reply(REPLY_OK);
     return false;
   }
@@ -137,21 +214,41 @@ ShardClient::GetProof(const uint64_t block,
 
   // set to 1 second by default
   int timeout = 100000;
+
+  // if (device_ == 'c') {
   transport->Timer(0, [=]() {
     verifyPromise.emplace(uid, promise);
     ++uid;
     client->InvokeUnlogged(replica,
-                 request_str,
-                 bind(&ShardClient::GetProofCallback,
+                request_str,
+                bind(&ShardClient::GetProofCallback,
                   this,
                   uid - 1,
                   keys,
                   placeholders::_1,
                   placeholders::_2),
-                 bind(&ShardClient::GetTimeout,
+                bind(&ShardClient::GetTimeout,
                   this),
-                 timeout); // timeout in ms
+                timeout); // timeout in ms
   });
+  // } else {
+  // assert(device_ == 'g');
+  // transport->Timer(0, [=]() {
+  //   verifyPromise.emplace(uid, promise);
+  //   ++uid;
+  //   client->InvokeUnlogged(replica,
+  //               request_str,
+  //               bind(&ShardClient::GetProofCallbackGPU,
+  //                 this,
+  //                 uid - 1,
+  //                 keys,
+  //                 placeholders::_1,
+  //                 placeholders::_2),
+  //               bind(&ShardClient::GetTimeout,
+  //                 this),
+  //               timeout); // timeout in ms
+  // });
+  // }
   return true;
 }
 
@@ -196,7 +293,7 @@ ShardClient::Prepare(uint64_t id, const Transaction &txn,
   Request request;
   request.set_op(Request::PREPARE);
   request.set_txnid(id);
-  txn.serialize(request.mutable_prepare()->mutable_txn());
+  txn.serialize(request.mutable_prepare()->mutable_txn()); 
   request.SerializeToString(&request_str);
 
   timeval t;
@@ -321,13 +418,14 @@ ShardClient::AuditCallback(uint64_t seq, size_t uid,
   }
 }
 
-void
-ShardClient::GetProofCallback(size_t uid,
-                              const std::vector<std::string>& keys,
-                              const std::string& request_str,
-                              const std::string& reply_str) {
+void 
+ShardClient::GetProofMultiBlockCallback(size_t uid,
+                                        const std::map<uint64_t, std::vector<std::string>>& keys,
+                                        const std::string& request_str,
+                                        const std::string& reply_str) {
+  printf("GetProofMultiBlockCallback is implemented\n");
   /* Replies back from a shard. */
-  //TODO: adapt to GPU
+  // TODO: add multiblock
   Reply reply;
   reply.ParseFromString(reply_str);
   if (verifyPromise[uid] != NULL) {
@@ -337,7 +435,15 @@ ShardClient::GetProofCallback(size_t uid,
     struct timeval t0, t1;
     gettimeofday(&t0, NULL);
     ledgebase::Hash mptdigest = ledgebase::Hash::FromBase32(reply.digest().mpthash());
+
+    auto blks_it = keys.begin();
+    int keys_it_inner = 0;
+
     for (size_t i = 0; i < reply.proof_size(); ++i) {
+
+      // MPT
+      assert(blks_it != keys.end());
+
       auto p = reply.proof(i);
       ledgebase::ledgerdb::MPTProof prover;
       prover.SetValue(p.mptvalue());
@@ -346,10 +452,80 @@ ShardClient::GetProofCallback(size_t uid,
             reinterpret_cast<const unsigned char*>(p.mpt_chunks(j).c_str()),
             p.mpt_pos(j));
       }
-      if (p.mpt_chunks_size() > 0 && !prover.VerifyProof(mptdigest, keys[i])) {
+
+      if (p.mpt_chunks_size() > 0 && 
+          !prover.VerifyProof(mptdigest, blks_it->second.at(keys_it_inner))) {
+        res = VerifyStatus::FAILED;
+        printf("Verification Failed: block[%d] key: %s\n",
+               blks_it->first, blks_it->second[keys_it_inner].c_str());
+      } else {
+        printf("Verification Succeed: block[%d] key: %s\n",
+                blks_it->first, blks_it->second[keys_it_inner].c_str());
+      }
+
+      // iterate to the next key
+      if (++keys_it_inner >= blks_it->second.size()) {
+        keys_it_inner = 0;
+        blks_it++;
+      }
+
+      // MT
+      ledgebase::ledgerdb::Proof mtprover;
+      mtprover.value = p.val();
+      mtprover.digest = p.hash();
+      for (size_t j = 0; j < p.proof_size(); ++j) {
+        mtprover.proof.emplace_back(p.proof(j));
+      }
+      for (size_t j = 0; j < p.mt_pos_size(); ++j) {
+        mtprover.pos.emplace_back(p.mt_pos(j));
+      }
+      if (!mtprover.Verify()) {
+        res = VerifyStatus::FAILED;
+      }
+    }
+    gettimeofday(&t1, NULL);
+    auto elapsed = ((t1.tv_sec - t0.tv_sec)*1000000 +
+                    (t1.tv_usec - t0.tv_usec));
+  //   //std::cout << "verify " << elapsed << " " << reply.ByteSizeLong() << " " << keys.size() << " " << res << std::endl;
+
+    Promise *w = verifyPromise[uid];
+    verifyPromise.erase(uid);
+    w->Reply(REPLY_OK);
+  }
+}
+
+void
+ShardClient::GetProofCallback(size_t uid,
+                              const std::vector<std::string>& keys,
+                              const std::string& request_str,
+                              const std::string& reply_str) {
+  /* Replies back from a shard. */
+  Reply reply;
+  reply.ParseFromString(reply_str);
+  if (verifyPromise[uid] != NULL) {
+    tip_block = reply.digest().block();
+    VerifyStatus res = VerifyStatus::PASS;
+
+    struct timeval t0, t1;
+    gettimeofday(&t0, NULL);
+    ledgebase::Hash mptdigest = ledgebase::Hash::FromBase32(reply.digest().mpthash());
+    printf("reply.proof.size == %d, keys.size = %d\n", reply.proof_size(), keys.size());
+    for (size_t i = 0; i < reply.proof_size(); ++i) {
+      // proof mpt
+      // printf("MPT proof key[%d]: %s\n", i, keys[i].c_str());
+      auto p = reply.proof(i);
+      ledgebase::ledgerdb::MPTProof prover;
+      prover.SetValue(p.mptvalue());
+      for (size_t j = 0; j < p.mpt_chunks_size(); ++j) {
+        prover.AppendProof(
+            reinterpret_cast<const unsigned char*>(p.mpt_chunks(j).c_str()),
+            p.mpt_pos(j));
+      }
+      if (p.mpt_chunks_size() > 0 && !prover.VerifyProof(mptdigest, "keys[i]")) {
         res = VerifyStatus::FAILED;
       }
 
+      // proof mt
       ledgebase::ledgerdb::Proof mtprover;
       mtprover.value = p.val();
       mtprover.digest = p.hash();
@@ -373,6 +549,127 @@ ShardClient::GetProofCallback(size_t uid,
     w->Reply(reply.status(), res);
   }
 }
+
+static std::string KeybytesToHex(const std::string& key) {
+    size_t l = key.length() * 2 + 1;
+    std::string nibbles;
+    nibbles.resize(l);
+    for (size_t i = 0; i < key.length(); ++i) {
+      nibbles[i*2] = *reinterpret_cast<const int8_t*>(key.c_str() + i) / 16;
+      nibbles[i*2+1] = *reinterpret_cast<const int8_t*>(key.c_str() + i) % 16;
+    }
+    nibbles[l-1] = 16;
+    return nibbles;
+  }
+
+// void
+// ShardClient::GetProofMultiBlockCallback(size_t uid,
+//                                         const std::map<uint64_t, std::vector<std::string>>& keys,
+//                                         const std::string& request_str,
+//                                         const std::string& reply_str) {
+
+void
+ShardClient::GetProofMultiBlockCallbackGPU(size_t uid,
+                                 const std::map<uint64_t, std::vector<std::string>>& keys,
+                                 const std::string& request_str,
+                                 const std::string& reply_str) {
+  /* Replies back from a shard. */
+  Reply reply;
+  reply.ParseFromString(reply_str);
+  if (verifyPromise[uid] != NULL) {
+    tip_block = reply.digest().block();
+    VerifyStatus res = VerifyStatus::PASS;
+
+    struct timeval t0, t1;
+    gettimeofday(&t0, NULL);
+    ledgebase::Hash mptdigest = ledgebase::Hash::FromBase32(reply.digest().mpthash());
+    printf("reply.proof.size == %d, keys.size = %d\n", reply.proof_size(), keys.size());
+
+    // proof MPT in GPU
+    auto blks_it = keys.begin();
+    int keys_it_inner = 0;
+
+    for (size_t i = 0; i < reply.proof_size(); ++i) {
+
+      // MPT
+      assert(blks_it != keys.end());
+      
+      auto p = reply.proof(i);
+      
+      std::string key_hex_str = KeybytesToHex(blks_it->second.at(keys_it_inner));
+      const uint8_t *key_hex = reinterpret_cast<const uint8_t*>(key_hex_str.c_str());
+      const int key_hex_size = key_hex_str.size();
+      const uint8_t *value = reinterpret_cast<const uint8_t*>(p.mptvalue().c_str());
+      const int value_size = p.mptvalue().size();
+      const uint8_t *proof = reinterpret_cast<const uint8_t*>(p.mpt_chunks(0).c_str());
+      const int proof_size = p.mpt_chunks(0).size();
+
+      const uint8_t *digest = mptdigest.value();
+      const int digest_size = mptdigest.kByteLength; // hash is cut in kByteLength
+      bool ok = verify_proof_single(
+        key_hex, key_hex_size, 
+        digest, digest_size, 
+        value, value_size, 
+        proof, proof_size);
+
+      if (!ok) {
+        res = VerifyStatus::FAILED;
+        printf("Verification Failed: block[%d] key: %s\n",
+               blks_it->first, blks_it->second[keys_it_inner].c_str());
+      } else {
+        printf("Verification Succeed: block[%d] key: %s\n",
+              blks_it->first, blks_it->second[keys_it_inner].c_str());
+      }
+
+      // iterate to the next key
+      if (++keys_it_inner >= blks_it->second.size()) {
+        keys_it_inner = 0;
+        blks_it++;
+      }
+      // if (!verify_proof_single(key_hex, key_hex_size, ))
+      // ledgebase::ledgerdb::MPTProof prover;
+
+      // prover.SetValue(p.mptvalue());
+      // for (size_t j = 0; j < p.mpt_chunks_size(); ++j) {
+      //   prover.AppendProof(
+      //       reinterpret_cast<const unsigned char*>(p.mpt_chunks(j).c_str()),
+      //       p.mpt_pos(j));
+      // }
+      // if (p.mpt_chunks_size() > 0 && !prover.VerifyProof(mptdigest, keys[i])) {
+      //   res = VerifyStatus::FAILED;
+      // }
+    }
+
+
+    for (size_t i = 0; i < reply.proof_size(); ++i) {
+      // proof mpt
+      // printf("MPT proof key[%d]: %s\n", i, keys[i].c_str());
+      auto p = reply.proof(i);
+      // proof mt
+      ledgebase::ledgerdb::Proof mtprover;
+      mtprover.value = p.val();
+      mtprover.digest = p.hash();
+      for (size_t j = 0; j < p.proof_size(); ++j) {
+        mtprover.proof.emplace_back(p.proof(j));
+      }
+      for (size_t j = 0; j < p.mt_pos_size(); ++j) {
+        mtprover.pos.emplace_back(p.mt_pos(j));
+      }
+      if (!mtprover.Verify()) {
+        res = VerifyStatus::FAILED;
+      }
+    }
+    gettimeofday(&t1, NULL);
+    auto elapsed = ((t1.tv_sec - t0.tv_sec)*1000000 +
+                    (t1.tv_usec - t0.tv_usec));
+    //std::cout << "verify " << elapsed << " " << reply.ByteSizeLong() << " " << keys.size() << " " << res << std::endl;
+
+    Promise *w = verifyPromise[uid];
+    verifyPromise.erase(uid);
+    w->Reply(reply.status(), res);
+  }
+}
+
 
 void
 ShardClient::GetRangeCallback(const string &request_str, const string &reply_str)
@@ -443,10 +740,14 @@ ShardClient::CommitCallback(const string &request_str, const string &reply_str)
     VerifyStatus vs;
     vs = VerifyStatus::UNVERIFIED;
     tip_block = reply.digest().block();
+    // printf("Commit Callback: tip_block = %d\n", tip_block);
+    printf("Commit Callback: reply.values_size() = %d\n", reply.values_size());
     for (size_t i = 0; i < reply.values_size(); ++i) {
       auto values = reply.values(i);
       unverified_keys.emplace_back(values.key());
       estimate_blocks.push_back(values.estimate_block());
+      printf("[C] Commit Callback: block[%ld] key: %s\n",  //bugs
+      values.estimate_block(), values.key().c_str());
     }
     Promise *w = waiting;
     waiting = NULL;

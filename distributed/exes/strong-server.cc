@@ -140,11 +140,30 @@ Server::UnloggedUpcall(const string &str1, string &str2)
   } else if (request.op() == strongstore::proto::Request::VERIFY_GET) {
     std::map<uint64_t, std::vector<std::string>> keys;
     std::vector<std::string> data;
+    printf("Verify %d keys\n", request.verify().keys_size());
     for (size_t i = 0; i < request.verify().keys_size(); ++i) {
       data.push_back(request.verify().keys(i));
+      // printf("Verify Block %lu, key %s\n", 
+        // request.verify().block(), 
+        // request.verify().keys(i).c_str());
     }
+    // printf("Call Get Proof\n");
     keys.emplace(request.verify().block(), data);
     status = store->GetProof(keys, &reply);
+  } else if (request.op() == strongstore::proto::Request::BATCH_VERIFY) {
+    printf("Batch Verify\n");
+    std::map<uint64_t, std::vector<std::string>> keys;
+    auto verifymulti = request.verifymulti();
+    for (size_t blk_i = 0; blk_i < verifymulti.verifys_size(); ++blk_i) {
+      std::vector<std::string> data;
+      auto verify = verifymulti.verifys(blk_i);
+      for (size_t i = 0; i < verify.keys_size(); ++i) {
+        data.push_back(verify.keys(i));
+      }
+      keys.emplace(verify.block(), data);
+    }
+    status = store->GetProof(keys, &reply);
+    printf("BATCH_VERIFY finish\n");
   } else if (request.op() == strongstore::proto::Request::RANGE) {
     status = store->GetRange(request.range().from(),
                              request.range().to(), &reply);
@@ -341,6 +360,8 @@ main(int argc, char **argv)
 
     timeval t0, t1;
     gettimeofday(&t0, NULL);
+
+    // init
     if (workload.compare("ycsb") == 0) {
       for (int iter = 0; iter < version; ++iter) {
         std::vector<std::string> keys, vals;

@@ -101,6 +101,8 @@ class LedgerDB {
 
   void buildTree(int timeout);
 
+  void buildTreeGPU(int timeout);
+
   uint64_t Set(const std::vector<std::string> &keys,
            const std::vector<std::string> &values,
            const uint64_t &timestamp);
@@ -125,6 +127,20 @@ class LedgerDB {
                  size_t *blk_seq,
                  std::string *mpt_hash);
 
+  bool GetProofsGPU(const std::vector<std::string> &keys,
+                    const std::vector<size_t> key_blk_seqs,
+                    std::vector<Proof> &mt_proofs,
+                    // std::vector<MPTProof> &mpt_proofs,
+
+                    const uint8_t *&mpt_proofs,
+                    const int *&mpt_proofs_indexs,
+                    const uint8_t **&mpt_values_hps,
+                    const int *&mpt_values_sizes,
+
+                    std::string *root_digest,
+                    size_t *blk_seq,
+                    std::string *mpt_hash);
+
   Auditor GetAudit(const uint64_t seq);
   
   bool GetRootDigest(uint64_t *blk_seq,
@@ -145,6 +161,8 @@ class LedgerDB {
   std::unique_ptr<MerkleTree> mt_;
   std::unique_ptr<SkipList> sl_;
   std::map<std::string, long> skiplist_head_;
+
+  void *gpumpt_;
 };
 
 }  // namespace ledgerdb

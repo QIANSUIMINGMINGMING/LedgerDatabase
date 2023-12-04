@@ -98,7 +98,7 @@ int taskGenerator(int clientid, int tid, int tlen, int wPer, int rPer, int timeo
       } else if (roll < wPer + rPer) {
         op = 0;
       } else {
-        op = 2;
+        op = 2; // TODO: currently no others
         n = rand() % 10;
       }
       task.keys.emplace_back(key);
@@ -138,13 +138,15 @@ int verifyThread(strongstore::Client* client, int idx, int tLen, int wPer, int d
     
     struct timeval t0, t1;
     gettimeofday(&t0, NULL);
-    bool vs = client->Verify(unverified_keys);
+    // TODO: batch verify
+    // bool vs = client->Verify(unverified_keys);
+    bool vs = client->VerifyMultiBlock(unverified_keys);
     gettimeofday(&t1, NULL);
     long latency = (t1.tv_sec - t0.tv_sec)*1000000 +
                    (t1.tv_usec - t0.tv_usec);
 
     fprintf(stderr, "%ld %ld.%06ld %ld.%06ld %ld %d %d\n", unverified_keys.size(),
-        t0.tv_sec, t0.tv_usec, t1.tv_sec, t1.tv_usec, latency, vs?1:0, 3);
+        t0.tv_sec, t0.tv_usec, t1.tv_sec, t1.tv_usec, latency, vs?0:1, 3); // TODO
     
     {
       boost::unique_lock<boost::shared_mutex> write(lck);
@@ -184,16 +186,25 @@ txnThread(strongstore::Client* client, int idx, int tLen, int wPer, int rPer, in
     bool status = true;
     for (size_t j = 0; j < task.ops.size(); j++) {
       if (task.ops[j] == 1) {
+        printf("Client Put <%s, %s>\n", task.keys[j].c_str(), task.vals[j].c_str());
         client->Put(task.keys[j], task.vals[j]);
       } else if (task.ops[j] == 0) {
+        printf("Client Get <%s, %s>\n", task.keys[j].c_str(), task.vals[j].c_str());
         client->Get(task.keys[j]);
       } else {
+        printf("Client GetnVersions (unexpected)\n");
         client->GetNVersions(task.keys[j], task.n[j]);
       }
     }
 
     std::map<int, std::map<uint64_t, std::vector<std::string>>> unverified_keys;
+    // printf("Client Commit\n");
     status = client->Commit(unverified_keys);
+    // assert(unverified_keys.size() == 1); // only 1 partitq j
+    // for (auto &block : unverified_keys[0]) {
+    //   for (auto &keys : block.second) {
+    //   }
+    // }
 
     gettimeofday(&t2, NULL);
     long latency = (t2.tv_sec - t1.tv_sec)*1000000 +
@@ -228,6 +239,32 @@ txnThread(strongstore::Client* client, int idx, int tLen, int wPer, int rPer, in
                 }
                 verifymap.emplace(replicas.first, blocks);
             }
+        }
+
+        {
+          // // TODO: debug, pring unverified keys
+          // std::map<int, std::map<uint64_t, std::vector<std::string>>> unverified_keys;
+          // // boost::shared_lock<boost::shared_mutex> read(lck);
+          // if (verifymap.size() == 0) continue;
+          // for (auto& replica : verifymap) {
+          //   std::map<uint64_t, std::vector<std::string>> blocks;
+          //   for (auto& block : replica.second) {
+          //     std::vector<std::string> keys;
+          //     for (auto& k : block.second) {
+          //       keys.push_back(k);
+          //     }
+          //     blocks.emplace(block.first, keys);
+          //   }
+          //   unverified_keys.emplace(replica.first, blocks);
+          // }
+
+          // for (auto &replica : unverified_keys) {
+          //   for (auto &block : replica.second) {
+          //     for (auto &k : block.second) {
+          //       // printf("[V][TxnThread] Unverified Keys: [%d][%ld][%s]\n", replica.first, block.first, k.c_str());
+          //     }
+          //   }
+          // }
         }
     }
     gettimeofday(&t1, NULL);
