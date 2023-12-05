@@ -139,7 +139,7 @@ bool VersionedKVStore::GetProof(
         p->add_mt_pos(mtproof[i].pos[j]);
       }
 
-      printf("Set mpt proof[%d] for key[%s]\n", i, ks[i].c_str());
+      // printf("Set mpt proof[%d] for key[%s]\n", i, ks[i].c_str());
       p->set_mptvalue(mptproof[i].GetValue());
       for (size_t j = 0; j < mptproof[i].MapSize(); ++j) {
         p->add_mpt_chunks(mptproof[i].GetMapChunk(j));

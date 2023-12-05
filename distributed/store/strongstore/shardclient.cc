@@ -124,11 +124,9 @@ bool
 ShardClient::GetProofMultiBlock(
   const std::map<uint64_t, std::vector<string>> &keys,
   Promise *promise) {
-  // TODO
   // printf("ShardClient::GetProofMultiBlock() unimplemented\n");
   // create request
 
-  // TODO
   string request_str;
   Request request;
   request.set_op(Request::BATCH_VERIFY);
@@ -423,9 +421,10 @@ ShardClient::GetProofMultiBlockCallback(size_t uid,
                                         const std::map<uint64_t, std::vector<std::string>>& keys,
                                         const std::string& request_str,
                                         const std::string& reply_str) {
-  printf("GetProofMultiBlockCallback is implemented\n");
+  // printf("GetProofMultiBlockCallback is implemented\n");
   /* Replies back from a shard. */
-  // TODO: add multiblock
+  auto start = std::chrono::steady_clock::now();
+
   Reply reply;
   reply.ParseFromString(reply_str);
   if (verifyPromise[uid] != NULL) {
@@ -459,8 +458,8 @@ ShardClient::GetProofMultiBlockCallback(size_t uid,
         printf("Verification Failed: block[%d] key: %s\n",
                blks_it->first, blks_it->second[keys_it_inner].c_str());
       } else {
-        printf("Verification Succeed: block[%d] key: %s\n",
-                blks_it->first, blks_it->second[keys_it_inner].c_str());
+        // printf("Verification Succeed: block[%d] key: %s\n",
+        //         blks_it->first, blks_it->second[keys_it_inner].c_str());
       }
 
       // iterate to the next key
@@ -492,6 +491,13 @@ ShardClient::GetProofMultiBlockCallback(size_t uid,
     verifyPromise.erase(uid);
     w->Reply(REPLY_OK);
   }
+
+  auto end = std::chrono::steady_clock::now();
+    
+  std::cout 
+    << " GetProofMultiBlockCallback time = " 
+    << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
+    << std::endl;
 }
 
 void
@@ -574,6 +580,8 @@ ShardClient::GetProofMultiBlockCallbackGPU(size_t uid,
                                  const std::string& request_str,
                                  const std::string& reply_str) {
   /* Replies back from a shard. */
+  auto start = std::chrono::steady_clock::now();
+
   Reply reply;
   reply.ParseFromString(reply_str);
   if (verifyPromise[uid] != NULL) {
@@ -617,8 +625,8 @@ ShardClient::GetProofMultiBlockCallbackGPU(size_t uid,
         printf("Verification Failed: block[%d] key: %s\n",
                blks_it->first, blks_it->second[keys_it_inner].c_str());
       } else {
-        printf("Verification Succeed: block[%d] key: %s\n",
-              blks_it->first, blks_it->second[keys_it_inner].c_str());
+        // printf("Verification Succeed: block[%d] key: %s\n",
+        //       blks_it->first, blks_it->second[keys_it_inner].c_str());
       }
 
       // iterate to the next key
@@ -668,6 +676,13 @@ ShardClient::GetProofMultiBlockCallbackGPU(size_t uid,
     verifyPromise.erase(uid);
     w->Reply(reply.status(), res);
   }
+
+  auto end = std::chrono::steady_clock::now();
+    
+  std::cout 
+    << " GetProofMultiBlockCallback time = " 
+    << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
+    << std::endl;
 }
 
 
@@ -741,13 +756,13 @@ ShardClient::CommitCallback(const string &request_str, const string &reply_str)
     vs = VerifyStatus::UNVERIFIED;
     tip_block = reply.digest().block();
     // printf("Commit Callback: tip_block = %d\n", tip_block);
-    printf("Commit Callback: reply.values_size() = %d\n", reply.values_size());
+    // printf("Commit Callback: reply.values_size() = %d\n", reply.values_size());
     for (size_t i = 0; i < reply.values_size(); ++i) {
       auto values = reply.values(i);
       unverified_keys.emplace_back(values.key());
       estimate_blocks.push_back(values.estimate_block());
-      printf("[C] Commit Callback: block[%ld] key: %s\n",  //bugs
-      values.estimate_block(), values.key().c_str());
+      // printf("[C] Commit Callback: block[%ld] key: %s\n",  //bugs
+      // values.estimate_block(), values.key().c_str());
     }
     Promise *w = waiting;
     waiting = NULL;

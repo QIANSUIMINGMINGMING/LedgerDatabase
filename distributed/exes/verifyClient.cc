@@ -186,13 +186,13 @@ txnThread(strongstore::Client* client, int idx, int tLen, int wPer, int rPer, in
     bool status = true;
     for (size_t j = 0; j < task.ops.size(); j++) {
       if (task.ops[j] == 1) {
-        printf("Client Put <%s, %s>\n", task.keys[j].c_str(), task.vals[j].c_str());
+        // printf("Client Put <%s, %s>\n", task.keys[j].c_str(), task.vals[j].c_str());
         client->Put(task.keys[j], task.vals[j]);
       } else if (task.ops[j] == 0) {
-        printf("Client Get <%s, %s>\n", task.keys[j].c_str(), task.vals[j].c_str());
+        // printf("Client Get <%s, %s>\n", task.keys[j].c_str(), task.vals[j].c_str());
         client->Get(task.keys[j]);
       } else {
-        printf("Client GetnVersions (unexpected)\n");
+        // printf("Client GetnVersions (unexpected)\n");
         client->GetNVersions(task.keys[j], task.n[j]);
       }
     }

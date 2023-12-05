@@ -399,7 +399,7 @@ bool Client::Commit(std::map<int, std::map<uint64_t, std::vector<std::string>>>&
 
         // Send commits
         
-        // keys: <partition, <block, [keys]>>
+        // keys: <partition, <block, [keys]>>un
         map<int, Promise *> promises;
         for (auto& p : participants) {
                         promises.emplace(p, new Promise(PREPARE_TIMEOUT));
@@ -444,6 +444,9 @@ Client::Abort()
 
 int Client::VerifyMultiBlock(std::map<int, std::map<uint64_t, std::vector<std::string>>>& keys) {
     // Contact the appropriate shard to set the value.
+
+    auto start = std::chrono::steady_clock::now();
+
     int status = REPLY_OK;
     list<Promise*> promises;
     size_t nkeys = 0;
@@ -471,7 +474,6 @@ int Client::VerifyMultiBlock(std::map<int, std::map<uint64_t, std::vector<std::s
         ++k;
     }
     
-    std::cout << "verifynkeys " << nkeys << std::endl;
 
     for (auto& p : promises) {
         if (p->GetReply() != REPLY_OK) {
@@ -479,6 +481,16 @@ int Client::VerifyMultiBlock(std::map<int, std::map<uint64_t, std::vector<std::s
         }
         delete p;
     }
+  
+    auto end = std::chrono::steady_clock::now();
+    
+    std::cout 
+      << "verifynkeys " 
+      << nkeys 
+      << " times = " 
+      << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
+      << std::endl;
+
     return status;
 }
 
