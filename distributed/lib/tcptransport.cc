@@ -295,6 +295,7 @@ TCPTransport::SendMessageInternal(TransportReceiver *src,
                                   const Message &m,
                                   bool multicast)
 {
+    // printf("Send Message Internal\n");
     auto kv = tcpOutgoing.find(dst);
     // See if we have a connection open
     if (kv == tcpOutgoing.end()) {
@@ -315,7 +316,7 @@ TCPTransport::SendMessageInternal(TransportReceiver *src,
                        sizeof(totalLen) +
                        sizeof(uint32_t));
     
-    char buf[totalLen];
+    char *buf = new char[totalLen];
     char *ptr = buf;
 
     *((uint32_t *) ptr) = MAGIC;
@@ -342,10 +343,13 @@ TCPTransport::SendMessageInternal(TransportReceiver *src,
     ptr += dataLen;
 
     if (bufferevent_write(ev, buf, totalLen) < 0) {
+        // printf("Failed to write to TCP buffer\n");
         Warning("Failed to write to TCP buffer");
         return false;
     }
     
+    free(buf);
+    // printf(" Finished Send Message Internal\n");
     return true;
 }
 
@@ -556,7 +560,7 @@ TCPTransport::TCPReadableCallback(struct bufferevent *bev, void *arg)
             return;
         }
                 
-        char buf[totalSize];
+        char *buf = new char[totalSize];
         size_t copied = evbuffer_remove(evbuf, buf, totalSize);
         ASSERT(copied == totalSize);
         
@@ -584,7 +588,9 @@ TCPTransport::TCPReadableCallback(struct bufferevent *bev, void *arg)
         
         // Dispatch
         info->receiver->ReceiveMessage(addr->second, msgType, msg);
-            }
+
+        free(buf);
+    }
 }
 
 void
