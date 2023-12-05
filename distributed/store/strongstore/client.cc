@@ -486,10 +486,10 @@ int Client::VerifyMultiBlock(std::map<int, std::map<uint64_t, std::vector<std::s
     
     std::cout 
       << "verifynkeys " 
-      << nkeys 
-      << " times = " 
-      << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
-      << std::endl;
+      << nkeys << std::endl;
+      // << " times = " 
+      // << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
+      // << std::endl;
 
     return status;
 }

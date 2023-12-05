@@ -1,14 +1,17 @@
 #!/bin/bash
 #============= Parameters to fill ============
 nshard=1           # number of shards
-nclient=10         # number of clients / machine
-rtime=120          # duration to run
+nclient=1         # number of clients / machine
+rtime=60          # duration to run
 delay=100          # verification delay
 
 tlen=10            # transaction length
 wper=50            # writes percentage
 rper=50            # reads percentage
 zalpha=0           # zipf alpha
+txnrate=120        # request rate
+
+device=gpu         # cpu or gpu
 
 #============= Start Experiment =============
 . env.sh
@@ -20,7 +23,6 @@ clients=`cat clients`
 client="verifyClient"
 store="strongstore"
 mode="occ"
-txnrate=120
 
 # Print out configuration being used.
 echo "Configuration:"
@@ -41,7 +43,7 @@ for ((i=0; i<$nshard; i++))
 do
   echo "Starting shard$i replicas.."
   $expdir/start_replica.sh shard$i $expdir/shard$i.config \
-    "$bindir/$store -m $mode -e 0 -s 0 -N $nshard -n $i -t 100 -w ycsb -k 100000" $logdir
+    "device=gpu$device $bindir/$store -m $mode -e 0 -s 0 -N $nshard -n $i -t 100 -w ycsb -k 100000" $logdir
 done
 
 # Wait a bit for all replicas to start up
@@ -52,7 +54,7 @@ echo "Running the client(s)"
 count=0
 for host in ${clients[@]}
 do
-  ssh $host "source ~/.profile; source ~/.bashrc; mkdir -p $logdir; $expdir/start_client.sh \"$bindir/$client \
+  ssh $host "source ~/.profile; source ~/.bashrc; mkdir -p $logdir; $expdir/start_client.sh \"device=gpu$device $bindir/$client \
   -c $expdir/shard -N $nshard \
   -d $rtime -l $tlen -w $wper -g $rper -m $mode -e 0 -s 0 -z $zalpha -t $delay -x $txnrate\" \
   $count $nclient $logdir"
@@ -83,13 +85,13 @@ do
   echo $host
   ssh $host "cat $logdir/client.*.log | sort -g -k 3 > $logdir/client.log; \
              rm -f $logdir/client.*.log; mkdir -p $expdir/result; \
-             source ~/.profile; python $expdir/process_ycsb.py $logdir/client.log $rtime $expdir/result/${wper}_${nshard}_${nclient}_${zalpha};
+             source ~/.profile; python2 $expdir/process_ycsb.py $logdir/client.log $rtime $expdir/result/${wper}_${nshard}_${nclient}_${zalpha};
              rsync $expdir/result/${wper}_${nshard}_${nclient}_${zalpha} ${master}:$expdir/result/client.$host.log;"
 done
 
 echo "Processing logs"
-ssh ${master} "source ~/.profile; python $expdir/aggregate_ycsb.py $expdir/result $expdir/result/${wper}_${nshard}_${nclient}_${zalpha}; \
-               rm -f $expdir/result/client.*.log;"
+ssh ${master} "source ~/.profile; python2 $expdir/aggregate_ycsb.py $expdir/result $expdir/result/${wper}_${nshard}_${nclient}_${zalpha}; \
+               mv $expdir/result/client.*.log $expdir/result-backup/;"
 
 
 # for host in ${clients[@]}

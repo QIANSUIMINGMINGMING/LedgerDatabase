@@ -1,10 +1,10 @@
 #===== Parameters to Fill =====
 
 # project root directory
-rootdir=/home/muxi/ccpro/LedgerDatabase
+rootdir=/home/yangshen/code/LedgerDatabase
 
 # log directory
-logdir="/home/muxi/ccpro/LedgerDatabase/logs"
+logdir="/home/yangshen/code/LedgerDatabase/logs"
 
 # master node ip address
 master=127.0.0.1

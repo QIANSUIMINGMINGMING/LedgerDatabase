@@ -232,8 +232,8 @@ void VersionedKVStore::put(const vector<string> &keys,
 {
   auto estimate_blocks = ldb->Set(keys, values, t.getTimestamp());
   if (reply != nullptr) {
-    auto kv = reply->add_values();
     for (size_t i = 0; i < keys.size(); ++i) {
+      auto kv = reply->add_values();
       kv->set_key(keys[i]);
       kv->set_val(values[i]);
       kv->set_estimate_block(estimate_blocks);

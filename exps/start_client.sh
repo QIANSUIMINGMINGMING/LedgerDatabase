@@ -10,6 +10,7 @@ begin=$2
 copies=$3
 logdir=$4
 
+
 let end=$begin+$copies
 
 for ((i=$begin; i<$end; i++))

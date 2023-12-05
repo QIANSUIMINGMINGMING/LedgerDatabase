@@ -37,34 +37,38 @@ for f in glob(path + "/client*log"):
     sumV = sumV + float(lines[12])
     sumN = sumN + float(lines[13])
 
+# numSuccess = n(ok(commit)) + n(ok(verify))
+# 
 outfile = open(outpath, "w")
-outfile.write(str(numSuccess/duration) + "\n")
-outfile.write(str(sumSuccess/numSuccess) + "\n")
-outfile.write(str(numTotal/duration) + "\n")
-outfile.write(str(sumTotal/numTotal) + "\n")
-outfile.write(str((numTotal - numSuccess)/numTotal) + "\n")
-if numR == 0:
+outfile.write(str(numSuccess/duration) + "\n")              # 0
+outfile.write(str(sumSuccess/numSuccess) + "\n")            # 1
+outfile.write(str(numTotal/duration) + "\n")                # 2
+outfile.write(str(sumTotal/numTotal) + "\n")                # 3
+outfile.write(str((numTotal - numSuccess)/numTotal) + "\n") # 4
+if numR == 0:                                               # 5
   outfile.write("0\n")
 else:
   outfile.write(str(sumR/numR) + "\n")
 
-if numW == 0:
+if numW == 0:                                               # 6
   outfile.write("0\n")
 else:
   outfile.write(str(sumW/numW) + "\n")
 
-if numH == 0:
+if numH == 0:                                               # 7
   outfile.write("0\n")
 else:
   outfile.write(str(sumH/numH) + "\n")
 
-if numV == 0:
+if numV == 0:                                               # 8
   outfile.write("0\n")
 else:
   outfile.write(str(sumV/numV) + "\n")
 
-if sumN > 0:
+if sumN > 0:                                                # 9
   outfile.write(str(sumV/sumN) + "\n")
 else:
   outfile.write("0\n")
+
+outfile.write(str(sumN/duration) + "\n")                    # 10
 

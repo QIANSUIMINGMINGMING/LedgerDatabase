@@ -137,6 +137,7 @@ ShardClient::GetProofMultiBlock(
     verify->set_block(k.first);
     for (auto& kk : k.second) {
       verify->add_keys(kk);
+      // printf("[V] verify block[%d] key %s\n", k.first, kk.c_str());
     }
   }
   request.SerializeToString(&request_str);
@@ -183,7 +184,7 @@ ShardClient::GetProofMultiBlock(
 bool
 ShardClient::BlockVerifiable(const uint64_t block) {
   if (tip_block < block) {
-    printf("tip_block < block, unverifiable\n");
+    // printf("tip_block < block, unverifiable\n");
     return false;
   } 
   return true;
@@ -194,7 +195,7 @@ ShardClient::GetProof(const uint64_t block,
                       const std::vector<string>& keys,
                       Promise* promise) {
   if (tip_block < block) {
-    printf("tip_block < block, unverifiable\n");
+    // printf("tip_block < block, unverifiable\n");
     promise->Reply(REPLY_OK);
     return false;
   }
@@ -423,7 +424,7 @@ ShardClient::GetProofMultiBlockCallback(size_t uid,
                                         const std::string& reply_str) {
   // printf("GetProofMultiBlockCallback is implemented\n");
   /* Replies back from a shard. */
-  auto start = std::chrono::steady_clock::now();
+  // auto start = std::chrono::steady_clock::now();
 
   Reply reply;
   reply.ParseFromString(reply_str);
@@ -492,12 +493,12 @@ ShardClient::GetProofMultiBlockCallback(size_t uid,
     w->Reply(REPLY_OK);
   }
 
-  auto end = std::chrono::steady_clock::now();
+  // auto end = std::chrono::steady_clock::now();
     
-  std::cout 
-    << " GetProofMultiBlockCallback time = " 
-    << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
-    << std::endl;
+  // std::cout 
+  //   << " GetProofMultiBlockCallback time = " 
+  //   << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
+  //   << std::endl;
 }
 
 void
@@ -515,7 +516,7 @@ ShardClient::GetProofCallback(size_t uid,
     struct timeval t0, t1;
     gettimeofday(&t0, NULL);
     ledgebase::Hash mptdigest = ledgebase::Hash::FromBase32(reply.digest().mpthash());
-    printf("reply.proof.size == %d, keys.size = %d\n", reply.proof_size(), keys.size());
+    // printf("reply.proof.size == %d, keys.size = %d\n", reply.proof_size(), keys.size());
     for (size_t i = 0; i < reply.proof_size(); ++i) {
       // proof mpt
       // printf("MPT proof key[%d]: %s\n", i, keys[i].c_str());
@@ -527,7 +528,7 @@ ShardClient::GetProofCallback(size_t uid,
             reinterpret_cast<const unsigned char*>(p.mpt_chunks(j).c_str()),
             p.mpt_pos(j));
       }
-      if (p.mpt_chunks_size() > 0 && !prover.VerifyProof(mptdigest, "keys[i]")) {
+      if (p.mpt_chunks_size() > 0 && !prover.VerifyProof(mptdigest, keys[i])) {
         res = VerifyStatus::FAILED;
       }
 
@@ -580,7 +581,7 @@ ShardClient::GetProofMultiBlockCallbackGPU(size_t uid,
                                  const std::string& request_str,
                                  const std::string& reply_str) {
   /* Replies back from a shard. */
-  auto start = std::chrono::steady_clock::now();
+  // auto start = std::chrono::steady_clock::now();
 
   Reply reply;
   reply.ParseFromString(reply_str);
@@ -591,7 +592,7 @@ ShardClient::GetProofMultiBlockCallbackGPU(size_t uid,
     struct timeval t0, t1;
     gettimeofday(&t0, NULL);
     ledgebase::Hash mptdigest = ledgebase::Hash::FromBase32(reply.digest().mpthash());
-    printf("reply.proof.size == %d, keys.size = %d\n", reply.proof_size(), keys.size());
+    // printf("reply.proof.size == %d, keys.size = %d\n", reply.proof_size(), keys.size());
 
     // proof MPT in GPU
     auto blks_it = keys.begin();
@@ -677,12 +678,12 @@ ShardClient::GetProofMultiBlockCallbackGPU(size_t uid,
     w->Reply(reply.status(), res);
   }
 
-  auto end = std::chrono::steady_clock::now();
+  // auto end = std::chrono::steady_clock::now();
     
-  std::cout 
-    << " GetProofMultiBlockCallback time = " 
-    << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
-    << std::endl;
+  // std::cout 
+  //   << " GetProofMultiBlockCallback time = " 
+  //   << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
+  //   << std::endl;
 }
 
 
@@ -762,7 +763,7 @@ ShardClient::CommitCallback(const string &request_str, const string &reply_str)
       unverified_keys.emplace_back(values.key());
       estimate_blocks.push_back(values.estimate_block());
       // printf("[C] Commit Callback: block[%ld] key: %s\n",  //bugs
-      // values.estimate_block(), values.key().c_str());
+      //   values.estimate_block(), values.key().c_str());
     }
     Promise *w = waiting;
     waiting = NULL;

@@ -83,20 +83,20 @@ sLatency.sort()
 fLatency.sort()
 
 outfile = open(sys.argv[3], "w")
-outfile.write(str(len(sLatency)) + "\n")                                        
-outfile.write(str(sum(sLatency)) + "\n")                                        
-outfile.write(str(len(tLatency)) + "\n")                                        
-outfile.write(str(sum(tLatency)) + "\n")
-outfile.write(str(end - start) + "\n")
-outfile.write(str(len(rLatency)) + "\n")
-outfile.write(str(sum(rLatency)) + "\n")
-outfile.write(str(len(wLatency)) + "\n")
-outfile.write(str(sum(wLatency)) + "\n")
-outfile.write(str(len(hLatency)) + "\n")
-outfile.write(str(sum(hLatency)) + "\n")
-outfile.write(str(len(vLatency)) + "\n")
-outfile.write(str(sum(vLatency)) + "\n")
-outfile.write(str(sum(nkeys)) + "\n")
+outfile.write(str(len(sLatency)) + "\n") # numSuccess
+outfile.write(str(sum(sLatency)) + "\n") # sumSuccess
+outfile.write(str(len(tLatency)) + "\n") # numTotal
+outfile.write(str(sum(tLatency)) + "\n") # sumTotal
+outfile.write(str(duration) + "\n")      # duration
+outfile.write(str(len(rLatency)) + "\n") # numR
+outfile.write(str(sum(rLatency)) + "\n") # sumR
+outfile.write(str(len(wLatency)) + "\n") # numW
+outfile.write(str(sum(wLatency)) + "\n") # sumW
+outfile.write(str(len(hLatency)) + "\n") # numH
+outfile.write(str(sum(hLatency)) + "\n") # sumH
+outfile.write(str(len(vLatency)) + "\n") # numV
+outfile.write(str(sum(vLatency)) + "\n") # sumV
+outfile.write(str(sum(nkeys)) + "\n")    # sumN
 print "Transactions(All/Success): ", len(tLatency), len(sLatency)
 print "Abort Rate: ", (float)(len(tLatency)-len(sLatency))/len(tLatency)
 print "Throughput (All/Success): ", len(tLatency)/(end-start), len(sLatency)/(end-start)
@@ -113,3 +113,4 @@ if len(xLatency) > 0:
 if len(fLatency) > 0:
   print "Average Latency (failure): ", sum(fLatency)/float(len(tLatency)-len(sLatency))
   print "Extra (failure): ", fExtra
+print "Duration: ", duration

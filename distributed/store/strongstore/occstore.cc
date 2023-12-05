@@ -99,6 +99,8 @@ OCCStore::Commit(uint64_t id, uint64_t timestamp,
     keys.clear();
   }
 
+  // printf("reply.values_size() = %d\n", reply->values_size());
+
   if (ver_keys.size() > 0) {
     store.GetNVersions(ver_keys, reply);
   }
@@ -111,6 +113,10 @@ OCCStore::Commit(uint64_t id, uint64_t timestamp,
     store.put(keys, vals, Timestamp(timestamp), reply);
   }
 
+  // printf("reply.values_size() = %d\n", reply->values_size());
+
+  // printf("txn.getReadSet() %d keys, txn.getWriteSet() %d keys, reply.values_size() %d\n", 
+  //   txn.getReadSet().size(), txn.getWriteSet().size(), reply->values_size());
   prepared.erase(id);
 }
 
