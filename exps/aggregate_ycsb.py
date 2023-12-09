@@ -70,5 +70,6 @@ if sumN > 0:                                                # 9
 else:
   outfile.write("0\n")
 
+print sumN, "/", duration
 outfile.write(str(sumN/duration) + "\n")                    # 10
 

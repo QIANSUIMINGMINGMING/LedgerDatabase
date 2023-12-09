@@ -26,10 +26,15 @@ LedgerDB::LedgerDB(int timeout,
   commit_seq_ = 0;
   stop_.store(false);
   assert(getenv("device"));
+  assert(getenv("insert"));
+  olc_or_2pi_ = getenv("insert")[0];
+
   if (getenv("device")[0] == 'c') {
     buildThread_.reset(new std::thread(&LedgerDB::buildTree, this, timeout));
   } else if(getenv("device")[0] == 'g')  {
     buildThread_.reset(new std::thread(&LedgerDB::buildTreeGPU, this, timeout));
+  } else {
+    printf("error\n");
   }
   gpumpt_ = init_mpt();
 }
@@ -132,7 +137,7 @@ void LedgerDB::buildTreeGPU(int timeout) {
       }
     }
 
-    std::chrono::steady_clock::time_point begine2 = std::chrono::steady_clock::now(); // =====================
+    // std::chrono::steady_clock::time_point begine2 = std::chrono::steady_clock::now(); // =====================
     if (added) {
       // update merkle tree
       std::string prev_commit_seq = (commit_seq_ == 0) ?
@@ -206,14 +211,23 @@ void LedgerDB::buildTreeGPU(int timeout) {
       //   mpt_vs.push_back(iter->second);
       // } 
 
-      if (mpt_root.empty()) {
-        printf("MPT is empty\n");
+      // if (mpt_root.empty()) {
+      //   printf("MPT is empty\n");
+      // }
+      // printf("Insert %d keys GPU\n", nkv);
+      if (olc_or_2pi_ == 'o') {
+        printf("insert olc\n");
+        auto hash = insert_mpt_olc(gpumpt_, keys_hexs, keys_hexs_index, 
+                    values_bytes, values_bytes_index, values_hps, nkv);
+        newmptroot = Hash(hash);
+      } else {
+        printf("insert 2phase\n");
+        assert(olc_or_2pi_ == '2');
+        auto hash = insert_mpt_2phase(gpumpt_, keys_hexs, keys_hexs_index, 
+                    values_bytes, values_bytes_index, values_hps, nkv);
+        newmptroot = Hash(hash);
       }
-      printf("Insert %d keys GPU\n", nkv);
-      auto hash = insert_mpt_olc(gpumpt_, keys_hexs, keys_hexs_index, 
-                  values_bytes, values_bytes_index, values_hps, nkv);
       // printf("Finish Insert GPU MPT\n");
-      newmptroot = Hash(hash);
       // std::cout << "New Root From Me" << newmptroot << std::endl;
 
       // if (mpt_root.empty()) {
@@ -241,12 +255,16 @@ void LedgerDB::buildTreeGPU(int timeout) {
       ++commit_seq_;
 
       std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-      fprintf(stderr, "All time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begin1).count());
-      fprintf(stderr, "MPT time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(endMPT - beginMPT).count());
-      fprintf(stderr, "Update MT&DB time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begine2).count());
-      gettimeofday(&t1, NULL);
-      auto latency = (t1.tv_sec - t0.tv_sec)*1000000 + t1.tv_usec - t0.tv_usec;
+      // fprintf(stderr, "All time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begin1).count());
+      // fprintf(stderr, "MPT time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(endMPT - beginMPT).count());
+      // fprintf(stderr, "Update MT&DB time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begine2).count());
+      // gettimeofday(&t1, NULL);
+      // auto latency = (t1.tv_sec - t0.tv_sec)*1000000 + t1.tv_usec - t0.tv_usec;
       // std::cerr << "persist " << latency << " " << mpt_ks.size() << " " << mt_new_hashes.size() << std::endl;
+
+      auto time_mpt   = std::chrono::duration_cast<std::chrono::microseconds>(endMPT - beginMPT).count();
+      auto time_all   = std::chrono::duration_cast<std::chrono::microseconds>(end - begin1).count();
+      fprintf(stderr, "ADS update %d keys, time_mpt: %d, time_all %d\n", nkv, time_mpt, time_all);
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
   }
@@ -259,6 +277,8 @@ void LedgerDB::buildTree(int timeout) {
     timeval t0, t1;
     gettimeofday(&t0, NULL);
 
+    std::chrono::steady_clock::time_point begin1 = std::chrono::steady_clock::now(); // =====================
+
     bool added = false;
     uint64_t first_block;
     uint64_t last_block;
@@ -266,7 +286,6 @@ void LedgerDB::buildTree(int timeout) {
     std::vector<std::string> mt_new_hashes;
     std::map<std::string, std::string> mpt_blks;
 
-    std::chrono::steady_clock::time_point begin1 = std::chrono::steady_clock::now(); // =====================
     while (tree_queue_.try_pop(blk)) {
       if (!added) {
         first_block = blk.blk_seq;
@@ -282,7 +301,7 @@ void LedgerDB::buildTree(int timeout) {
       }
     }
 
-    std::chrono::steady_clock::time_point begine2 = std::chrono::steady_clock::now(); // =====================
+    // std::chrono::steady_clock::time_point begine2 = std::chrono::steady_clock::now(); // =====================
     if (added) {
       // update merkle tree
       std::string prev_commit_seq = (commit_seq_ == 0) ?
@@ -311,16 +330,17 @@ void LedgerDB::buildTree(int timeout) {
       }
 
       if (mpt_root.empty()) {
-        printf("MPT is empty\n");
-        printf("Insert %lu keys\n", mpt_ks.size());
+        // printf("MPT is empty\n");
+        // printf("Insert %lu keys\n", mpt_ks.size());
         auto mpt = Trie(&db_, mpt_ks, mpt_vs);
         newmptroot = mpt.hash().Clone();
       } else {
-        printf("Insert %lu keys\n", mpt_ks.size());
+        // printf("Insert %lu keys\n", mpt_ks.size());
         newmptroot = Trie(&db_, mpt_root).Set(mpt_ks, mpt_vs).Clone();
       }
 
       std::chrono::steady_clock::time_point endMPT = std::chrono::steady_clock::now();
+      // update MPT --------------------------------------------------
 
 
       std::string commit_entry = CommitInfo(commit_seq_, prev_digest,
@@ -332,11 +352,15 @@ void LedgerDB::buildTree(int timeout) {
       ++commit_seq_;
 
       std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-      fprintf(stderr, "All time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begin1).count());
-      fprintf(stderr, "MPT time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(endMPT - beginMPT).count());
-      fprintf(stderr, "Update MT&DB time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begine2).count());
-      gettimeofday(&t1, NULL);
-      auto latency = (t1.tv_sec - t0.tv_sec)*1000000 + t1.tv_usec - t0.tv_usec;
+      // fprintf(stderr, "All time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(end - begin1).count());
+      // fprintf(stderr, "MPT time = %ld us\n", std::chrono::duration_cast<std::chrono::microseconds>(endMPT - beginMPT).count());
+      // fprintf(stderr, "Update MT&DB time = %ld us\n");
+      // auto time_other = std::chrono::duration_cast<std::chrono::microseconds>(beginMPT - begin1).count();
+      auto time_mpt   = std::chrono::duration_cast<std::chrono::microseconds>(endMPT - beginMPT).count();
+      auto time_all   = std::chrono::duration_cast<std::chrono::microseconds>(end - begin1).count();
+      fprintf(stderr, "ADS update %d keys, time_mpt: %d, time_all %d\n", mpt_ks.size(), time_mpt, time_all);
+      // gettimeofday(&t1, NULL);
+      // auto latency = (t1.tv_sec - t0.tv_sec)*1000000 + t1.tv_usec - t0.tv_usec;
       // std::cerr << "persist " << latency << " " << mpt_ks.size() << " " << mt_new_hashes.size() << std::endl;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
@@ -495,6 +519,8 @@ bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
                             std::string *root_digest,
                             size_t *blk_seq,
                             std::string *mpt_digest) {
+  std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+
   std::string digest, commit;
   ledger_.Get("digest", &digest);
   auto commit_seq = std::to_string(DigestInfo(digest).commit_seq);
@@ -510,8 +536,8 @@ bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
   size_t current = 0;
   // printf("Get %d Proofs\n", keys.size());
   
-  std::chrono::steady_clock::time_point 
-    begin_mt = std::chrono::steady_clock::now();
+  // std::chrono::steady_clock::time_point 
+  //   begin_mt = std::chrono::steady_clock::now();
 
   for (size_t i = 0; i < keys.size(); i++) {
     if (key_blk_seqs[i] != current) {
@@ -522,12 +548,10 @@ bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
     }
   }
 
-  std::chrono::steady_clock::time_point
-    end_mt = std::chrono::steady_clock::now();
+  // std::chrono::steady_clock::time_point
+  //   end_mt = std::chrono::steady_clock::now();
   std::chrono::steady_clock::time_point 
     begin_mpt = std::chrono::steady_clock::now();
-
-  // TODO: 这里直接返回我们自己的path格式
 
   // collect into continous
   int keys_hexs_size = 0;
@@ -567,9 +591,9 @@ bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
 
   std::string newmptroot = Hash(hash).ToBase32();
   if (newmptroot != cinfo.mptroot) {
-    printf("The returned root is not the same with it from DB\n");
-    std::cout << "newmptroot: " << newmptroot << std::endl
-              << "from DB: " << cinfo.mptroot << std::endl;
+    // printf("The returned root is not the same with it from DB\n");
+    // std::cout << "newmptroot: " << newmptroot << std::endl
+    //           << "from DB: " << cinfo.mptroot << std::endl;
     *mpt_digest = newmptroot;
   }
 
@@ -581,10 +605,15 @@ bool LedgerDB::GetProofsGPU(const std::vector<std::string> &keys,
   std::chrono::steady_clock::time_point 
   end_mpt = std::chrono::steady_clock::now();
 
-  printf("get proof mt time = %d us, mpt_time = %d us\n", 
-    std::chrono::duration_cast<std::chrono::microseconds>(end_mt - begin_mt).count(),
-    std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin_mpt).count()
-  );
+  // printf("get proof mt time = %d us, mpt_time = %d us\n", 
+  //   std::chrono::duration_cast<std::chrono::microseconds>(end_mt - begin_mt).count(),
+  //   std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin_mpt).count()
+  // );
+
+  auto time_all = std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin).count();
+  auto time_mpt = std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin_mpt).count();
+
+  fprintf(stderr, "ADS getproof %d keys, time_mpt: %d, time_all %d\n", keys.size(), time_mpt, time_all);
 
   return true;
 }
@@ -601,6 +630,9 @@ bool LedgerDB::GetProofs(const std::vector<std::string> &keys,
                          std::string *root_digest,
                          size_t *blk_seq,
                          std::string *mpt_digest) {
+  std::chrono::steady_clock::time_point 
+    begin = std::chrono::steady_clock::now();
+
   std::string digest, commit;
   ledger_.Get("digest", &digest);
   auto commit_seq = std::to_string(DigestInfo(digest).commit_seq);
@@ -612,8 +644,8 @@ bool LedgerDB::GetProofs(const std::vector<std::string> &keys,
   *mpt_digest = cinfo.mptroot;
   auto mpt_hash = Hash::FromBase32(*mpt_digest);
 
-  std::chrono::steady_clock::time_point 
-    begin_mt = std::chrono::steady_clock::now();
+  // std::chrono::steady_clock::time_point 
+  //   begin_mt = std::chrono::steady_clock::now();
 
   size_t current = 0;
   // printf("Get %d Proofs\n", keys.size());
@@ -627,8 +659,8 @@ bool LedgerDB::GetProofs(const std::vector<std::string> &keys,
     }
   }
 
-  std::chrono::steady_clock::time_point 
-    end_mt = std::chrono::steady_clock::now();
+  // std::chrono::steady_clock::time_point 
+  //   end_mt = std::chrono::steady_clock::now();
   std::chrono::steady_clock::time_point 
     begin_mpt = std::chrono::steady_clock::now();
 
@@ -644,10 +676,15 @@ bool LedgerDB::GetProofs(const std::vector<std::string> &keys,
 
   // len(mpt_proofs) == #n keys
   // len(mt_proofs) == #n blocks
-  printf("get proof mt time = %d us, mpt_time = %d us\n", 
-    std::chrono::duration_cast<std::chrono::microseconds>(end_mt - begin_mt).count(),
-    std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin_mpt).count()
-  );
+  // printf("get proof mt time = %d us, mpt_time = %d us\n", 
+  //   std::chrono::duration_cast<std::chrono::microseconds>(end_mt - begin_mt).count(),
+  //   std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin_mpt).count()
+  // );
+
+  auto time_all = std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin).count();
+  auto time_mpt = std::chrono::duration_cast<std::chrono::microseconds>(end_mpt - begin_mpt).count();
+
+  fprintf(stderr, "ADS getproof %d keys, time_mpt: %d, time_all %d\n", keys.size(), time_mpt, time_all);
   return true;
 }
 

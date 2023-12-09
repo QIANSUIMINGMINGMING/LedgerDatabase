@@ -13,10 +13,10 @@ nclients=(1)
 theta=(0)
 
 # Experiment duration
-rtime=60
+rtime=120
 
 # Verification delay
-delay=100
+delay=1100
 
 # Transaction size
 tlen=10
@@ -26,6 +26,9 @@ driver=ycsb
 
 # cpu or gpu
 device=gpu
+
+# insert method
+insert=2pi
 
 # request rate
 txnrate=120
@@ -59,11 +62,12 @@ do
         sed -i -e "s/zalpha=[0-9\.]*/zalpha=$k/g" run_$driver.sh
         sed -i -e "s/delay=[0-9\.]*/delay=${delay}/g" run_$driver.sh
         sed -i -e "s/txnrate=[0-9]*/txnrate=${txnrate}/g" run_$driver.sh
-        sed -i -e "s/device=[a-z]*/device=${device}/g" run_$driver.sh
+        sed -i -e "s/device=[a-z][a-z]*/device=${device}/g" run_$driver.sh
+        sed -i -e "s/insert=[a-z0-9][a-z]*/insert=${insert}/g" run_$driver.sh
 
         ./clean.sh
         ./run_$driver.sh
-        ./clean.sh
+        # ./clean.sh
       done
     done
   done

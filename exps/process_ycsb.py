@@ -13,7 +13,7 @@ rLatency = []
 wLatency = []
 hLatency = []
 vLatency = []
-nkey = 0
+# nkey = 0
 nkeys = []
 
 tExtra = 0.0
@@ -26,7 +26,8 @@ for line in open(sys.argv[1]):
   if line.startswith('#') or line.strip() == "":
     continue
   if line.startswith("verifynkeys"):
-    nkey = float(line[12:-1])
+    # nkey = float(line[12:-1])
+    nkeys.append(float(line[12:]))
     continue
 
   line = line.strip().split()
@@ -61,7 +62,7 @@ for line in open(sys.argv[1]):
   elif op == 2:
     hLatency.append(latency)
   elif int(line[0]) > 0:
-    nkeys.append(nkey)
+    # nkeys.append(nkey)
     vLatency.append(latency)
 
   tLatency.append(latency) 
@@ -114,3 +115,6 @@ if len(fLatency) > 0:
   print "Average Latency (failure): ", sum(fLatency)/float(len(tLatency)-len(sLatency))
   print "Extra (failure): ", fExtra
 print "Duration: ", duration
+print "nkeys/duration: ", sum(nkeys), "/", duration
+for k in nkeys:
+  print k

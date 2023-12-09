@@ -151,8 +151,8 @@ Server::UnloggedUpcall(const string &str1, string &str2)
     keys.emplace(request.verify().block(), data);
     status = store->GetProof(keys, &reply);
   } else if (request.op() == strongstore::proto::Request::BATCH_VERIFY) {
-    printf("Start Get Proof\n");
-    std::chrono::steady_clock::time_point begin_req = std::chrono::steady_clock::now();
+    // printf("Start Get Proof\n");
+    // std::chrono::steady_clock::time_point begin_req = std::chrono::steady_clock::now();
 
     std::map<uint64_t, std::vector<std::string>> keys;
     auto verifymulti = request.verifymulti();
@@ -167,9 +167,9 @@ Server::UnloggedUpcall(const string &str1, string &str2)
       keys.emplace(verify.block(), data);
     }
     status = store->GetProof(keys, &reply);
-    std::chrono::steady_clock::time_point end_req = std::chrono::steady_clock::now();
-    printf("Get Proof Request %d blks, %d keys, %ld us\n", n_blks, n_keys, 
-      std::chrono::duration_cast<std::chrono::microseconds>(end_req - begin_req).count());
+    // std::chrono::steady_clock::time_point end_req = std::chrono::steady_clock::now();
+    // printf("Get Proof Request %d blks, %d keys, %ld us\n", n_blks, n_keys, 
+    //   std::chrono::duration_cast<std::chrono::microseconds>(end_req - begin_req).count());
   } else if (request.op() == strongstore::proto::Request::RANGE) {
     status = store->GetRange(request.range().from(),
                              request.range().to(), &reply);

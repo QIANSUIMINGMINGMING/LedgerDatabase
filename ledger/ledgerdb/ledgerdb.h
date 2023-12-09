@@ -163,6 +163,7 @@ class LedgerDB {
   std::map<std::string, long> skiplist_head_;
 
   void *gpumpt_;
+  char olc_or_2pi_;
 };
 
 }  // namespace ledgerdb
